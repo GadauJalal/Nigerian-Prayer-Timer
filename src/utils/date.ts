@@ -1,4 +1,5 @@
 import { format, isValid } from 'date-fns';
+import hijri from 'hijri';
 
 export const formatDate = (date: Date, formatStr: string = 'EEEE, d MMMM yyyy') => {
     if (!isValid(date)) return 'Invalid Date';
@@ -11,15 +12,21 @@ export const formatTime = (date: Date) => {
 };
 
 export const getHijriDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-TN-u-ca-islamic', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    }).format(date);
+    const hijriResult = hijri.convert(date);
+    const hijriMonths = [
+        'Muharram', 'Safar', 'Rabi\' Al-Awwal', 'Rabi\' Al-Thani',
+        'Jumada Al-Awwal', 'Jumada Al-Thani', 'Rajab', 'Sha\'ban',
+        'Ramadan', 'Shawwal', 'Dhu Al-Qi\'dah', 'Dhu Al-Hijjah'
+    ];
+    return `${hijriResult.dayOfMonth} ${hijriMonths[hijriResult.month - 1]} ${hijriResult.year}`;
 };
 
 export const getHijriMonth = (date: Date) => {
-    return new Intl.DateTimeFormat('en-TN-u-ca-islamic', {
-        month: 'long',
-    }).format(date);
+    const hijriResult = hijri.convert(date);
+    const hijriMonths = [
+        'Muharram', 'Safar', 'Rabi\' Al-Awwal', 'Rabi\' Al-Thani',
+        'Jumada Al-Awwal', 'Jumada Al-Thani', 'Rajab', 'Sha\'ban',
+        'Ramadan', 'Shawwal', 'Dhu Al-Qi\'dah', 'Dhu Al-Hijjah'
+    ];
+    return `${hijriMonths[hijriResult.month - 1]} ${hijriResult.year}`;
 }

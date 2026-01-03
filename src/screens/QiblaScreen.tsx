@@ -99,14 +99,6 @@ export default function QiblaScreen() {
         { backgroundColor: isDarkMode ? '#0B1120' : '#F8FAFC' },
       ]}
     >
-      {/* Subtle ambient glow */}
-      <View
-        style={[
-          styles.ambientGlow,
-          isDarkMode && styles.ambientGlowDark,
-        ]}
-      />
-
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
@@ -233,20 +225,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     position: 'relative',
-  },
-  ambientGlow: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 600,
-    height: 600,
-    marginLeft: -300,
-    marginTop: -300,
-    backgroundColor: 'rgba(16, 185, 129, 0.05)',
-    borderRadius: 300,
-  },
-  ambientGlowDark: {
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
   },
   safeArea: {
     flex: 1,

@@ -7,45 +7,33 @@ import { AppProvider } from './src/context/AppContext';
 import { ensureNotificationsScheduled } from './src/utils/notifications';
 
 export default function App() {
-  const notificationListener = useRef<Notifications.Subscription>();
-  const responseListener = useRef<Notifications.Subscription>();
+  const notificationListener = useRef<any>();
+  const responseListener = useRef<any>();
 
   useEffect(() => {
     // Listen for notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received in foreground:', notification);
-      const { prayerName, type } = notification.request.content.data || {};
+      const { type } = notification.request.content.data || {};
 
-      if (type === 'prayer-time') {
-        console.log(`${prayerName} prayer time notification received`);
-      } else if (type === 'midnight-reschedule') {
-        console.log('Midnight reschedule trigger received - notifications will be refreshed');
+      if (type === 'midnight-reschedule') {
         // Trigger reschedule to ensure tomorrow's prayers are scheduled
         ensureNotificationsScheduled();
       }
     });
 
     // Listen for user tapping on notification
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification tapped:', response);
-      const { prayerName, type } = response.notification.request.content.data || {};
-
-      if (type === 'prayer-time') {
-        console.log(`User tapped on ${prayerName} prayer notification`);
-        // You can navigate to a specific screen here if needed
-        // For example: navigation.navigate('Timetable');
-      } else if (type === 'midnight-reschedule') {
-        console.log('Midnight reschedule trigger tapped - notifications refreshed');
-      }
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(() => {
+      // Handle notification tap silently
+      // You can navigate to a specific screen here if needed
     });
 
     // Cleanup listeners on unmount
     return () => {
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
       }
     };
   }, []);

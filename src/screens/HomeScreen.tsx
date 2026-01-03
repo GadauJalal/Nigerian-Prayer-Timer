@@ -97,14 +97,6 @@ const HomeScreen = ({ navigation }: any) => {
         { backgroundColor: isDarkMode ? '#0B1120' : '#F8FAFC' },
       ]}
     >
-      {/* Subtle ambient orb */}
-      <View
-        style={[
-          styles.ambientOrb,
-          isDarkMode && styles.ambientOrbDark,
-        ]}
-      />
-
       <SafeAreaView style={styles.safeArea}>
         {/* Header with location and icons */}
         <HomeHeader
@@ -164,18 +156,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     position: 'relative',
-  },
-  ambientOrb: {
-    position: 'absolute',
-    top: 160,
-    right: 0,
-    width: 400,
-    height: 400,
-    backgroundColor: 'rgba(16, 185, 129, 0.05)',
-    borderRadius: 200,
-  },
-  ambientOrbDark: {
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
   },
   safeArea: {
     flex: 1,

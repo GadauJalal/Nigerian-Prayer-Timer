@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Settings, Share2 } from 'lucide-react-native
 import { useApp } from '../context/AppContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { calculatePrayerTimes, PrayerTimeResult } from '../utils/prayerTimes';
-import { formatDate, formatTime } from '../utils/date';
+import { formatDate, formatTime, getHijriMonth } from '../utils/date';
 import { startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isSameDay } from 'date-fns';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -50,7 +50,7 @@ const TimetableScreen = ({ navigation }: any) => {
         setShowExportMenu(false);
 
         const monthName = currentMonth.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
-        const hijriMonth = '11 Jumada Al-Thani 1447'; // Mock - replace with actual
+        const hijriMonth = getHijriMonth(currentMonth);
 
         const htmlContent = `
       <html>
@@ -147,7 +147,7 @@ const TimetableScreen = ({ navigation }: any) => {
     };
 
     const monthName = currentMonth.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
-    const hijriMonth = '11 Jumada Al-Thani 1447'; // Mock - replace with actual Hijri calculation
+    const hijriMonth = getHijriMonth(currentMonth);
 
     if (!location) {
         return (

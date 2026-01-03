@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { City, NIGERIA_LOCATIONS } from '../data/nigeria_locations';
 import { calculatePrayerTimes, PrayerTimeResult } from '../utils/prayerTimes';
@@ -44,6 +44,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [theme, setTheme] = useState<'light' | 'dark'>('light');
     const [loading, setLoading] = useState(true);
 
+    // Use ref to track last scheduled config to prevent duplicate scheduling
+    const lastScheduledConfig = useRef<string>('');
+
     useEffect(() => {
         loadSettings();
         requestNotificationPermissions();
@@ -53,14 +56,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (location) {
             refreshPrayerTimes();
             saveSettings();
-        }
-    }, [location, adjustments, theme]);
 
-    useEffect(() => {
-        if (prayerTimes) {
-            schedulePrayerNotifications(prayerTimes);
+            // Create a unique key based on location and adjustments
+            const configKey = JSON.stringify({
+                location: location.name,
+                adjustments
+            });
+
+            // Only schedule if configuration has actually changed
+            if (configKey !== lastScheduledConfig.current) {
+                lastScheduledConfig.current = configKey;
+                const times = calculatePrayerTimes(location.lat, location.lng, new Date(), adjustments);
+                // Schedule in background - the 1-minute delay in scheduleMultipleDays prevents immediate notifications
+                schedulePrayerNotifications(times);
+            }
         }
-    }, [prayerTimes]);
+    }, [location, adjustments]); // Removed 'theme' to prevent rescheduling on theme changes
 
     const loadSettings = async () => {
         try {
