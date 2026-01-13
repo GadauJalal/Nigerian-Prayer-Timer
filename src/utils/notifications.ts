@@ -1,43 +1,48 @@
 import * as Notifications from 'expo-notifications';
-import * as BackgroundFetch from 'expo-background-fetch';
-import * as TaskManager from 'expo-task-manager';
 import { PrayerTimeResult, calculatePrayerTimes } from './prayerTimes';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Track when app was last brought to foreground (for foreground behavior)
+let lastForegroundTime = Date.now();
+
+// Update foreground time when app state changes
+export const updateForegroundTime = () => {
+    lastForegroundTime = Date.now();
+};
+
 // Configure notification behavior - CRITICAL for showing notifications
-// NOTE: This only affects how notifications are displayed when app is in FOREGROUND
-// Background notifications are handled by the OS using channel settings
+// This handler controls how notifications are DISPLAYED when they fire
 Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
-        // Check if this is a test notification or a scheduled prayer notification
         const notificationType = notification.request.content.data?.type;
-        const isTestNotification = notificationType === 'test-notification';
         const isPrayerNotification = notificationType === 'prayer-time';
 
-        // For test notifications, always show them (for debugging purposes)
-        if (isTestNotification) {
+        // FOREGROUND BEHAVIOR ONLY: Check if app was just opened
+        // This is just for UX - don't interrupt user immediately on app open
+        const timeSinceAppOpened = Date.now() - lastForegroundTime;
+        const isAppJustOpened = timeSinceAppOpened < 10 * 1000; // 10 seconds
+
+        if (isAppJustOpened && isPrayerNotification) {
+            // App was just opened, show silently
+            console.log(`⏱️ Silent notification - app just opened (${Math.floor(timeSinceAppOpened / 1000)}s ago)`);
             return {
-                shouldShowAlert: true,
-                shouldPlaySound: true,
+                shouldShowAlert: false,
+                shouldPlaySound: false,
                 shouldSetBadge: true,
-                shouldShowBanner: true, // iOS: Show banner in foreground
-                shouldShowList: true, // iOS: Add to notification list in foreground
-                ...(Platform.OS === 'android' && {
-                    priority: Notifications.AndroidNotificationPriority.MAX,
-                }),
+                shouldShowBanner: false,
+                shouldShowList: true,
             };
         }
 
-        // For prayer notifications, only show them when they're actually triggered (not when app is in foreground)
-        // For other notifications (like midnight reschedule), don't show at all in foreground
+        // For all other cases - show normally with full alerts
+        console.log(`✅ Showing notification: ${notification.request.content.title}`);
         return {
-            shouldShowAlert: false, // Don't show alerts in foreground - let system handle at scheduled time
-            shouldPlaySound: false, // Don't play sound in foreground
-            shouldSetBadge: true, // Still update badge count
-            shouldShowBanner: false, // iOS: Don't show banner in foreground
-            shouldShowList: false, // iOS: Don't add to notification list in foreground
-            // Priority is Android-specific
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
             ...(Platform.OS === 'android' && {
                 priority: Notifications.AndroidNotificationPriority.MAX,
             }),
@@ -48,38 +53,76 @@ Notifications.setNotificationHandler({
 // Notification channel ID for Android
 const PRAYER_CHANNEL_ID = 'prayer-notifications';
 
-// Background task name for daily rescheduling
-const DAILY_RESCHEDULE_TASK = 'DAILY_PRAYER_RESCHEDULE';
-
 // Storage keys
-const LAST_SCHEDULE_DATE_KEY = 'lastScheduleDate';
+const ERROR_LOG_KEY = 'notificationErrors';
 
-// iOS has a limit of 64 scheduled notifications
-// With 5 prayers per day, we can schedule up to 12 days (60 notifications)
-// Reserve 4 slots for midnight triggers and other system notifications
-const MAX_IOS_NOTIFICATIONS = 64;
-const PRAYERS_PER_DAY = 5;
-const MAX_DAYS_TO_SCHEDULE = Math.floor((MAX_IOS_NOTIFICATIONS - 4) / PRAYERS_PER_DAY); // 12 days
+// Minimum delay before scheduling a notification (prevents immediate firing)
+const MINIMUM_SCHEDULE_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+
+// Adhan sound mapping
+const ADHAN_SOUND_MAP: Record<string, string> = {
+    'adhan': 'adhan.mp3',
+    'adhan1': 'adhan1.mp3',
+    'adhan2': 'adhan2.mp3',
+    'adhan3': 'adhan3.mp3',
+};
 
 /**
- * Get number of days to schedule ahead based on platform
- * iOS: Schedule far ahead (7-12 days) since background fetch is unreliable
- * Android: Schedule 2 days ahead since background tasks work reliably
+ * Log errors to AsyncStorage for debugging
  */
-const getDaysToSchedule = (): number => {
-    if (Platform.OS === 'ios') {
-        // iOS: Schedule 7 days ahead for reliability
-        // User needs to open app weekly to maintain notifications
-        return 7;
-    } else {
-        // Android: Schedule 2 days ahead (background task handles the rest)
-        return 2;
+const logError = async (context: string, error: any) => {
+    try {
+        const errorLog = {
+            timestamp: new Date().toISOString(),
+            context,
+            error: error?.message || String(error),
+            stack: error?.stack || 'No stack trace',
+        };
+
+        console.error(`❌ [${context}]`, error);
+
+        // Store last 10 errors
+        const existingLogsStr = await AsyncStorage.getItem(ERROR_LOG_KEY);
+        const existingLogs = existingLogsStr ? JSON.parse(existingLogsStr) : [];
+        existingLogs.unshift(errorLog);
+
+        if (existingLogs.length > 10) {
+            existingLogs.splice(10);
+        }
+
+        await AsyncStorage.setItem(ERROR_LOG_KEY, JSON.stringify(existingLogs));
+    } catch (logError) {
+        console.error('Failed to log error:', logError);
+    }
+};
+
+/**
+ * Get error logs for debugging
+ */
+export const getErrorLogs = async () => {
+    try {
+        const logsStr = await AsyncStorage.getItem(ERROR_LOG_KEY);
+        return logsStr ? JSON.parse(logsStr) : [];
+    } catch (error) {
+        console.error('Failed to get error logs:', error);
+        return [];
+    }
+};
+
+/**
+ * Clear error logs
+ */
+export const clearErrorLogs = async () => {
+    try {
+        await AsyncStorage.removeItem(ERROR_LOG_KEY);
+        console.log('✅ Error logs cleared');
+    } catch (error) {
+        console.error('Failed to clear error logs:', error);
     }
 };
 
 /**
  * Get platform-specific notification priority configuration
- * Android uses explicit priority levels, iOS uses system-managed priorities
  */
 const getPriorityConfig = () => {
     if (Platform.OS === 'android') {
@@ -87,12 +130,11 @@ const getPriorityConfig = () => {
             priority: Notifications.AndroidNotificationPriority.MAX,
         };
     }
-    return {}; // iOS uses system priorities, no manual configuration needed
+    return {};
 };
 
 /**
  * Get platform-specific channel configuration for notifications
- * Android requires channelId, iOS doesn't use channels
  */
 const getChannelConfig = () => {
     if (Platform.OS === 'android') {
@@ -100,21 +142,36 @@ const getChannelConfig = () => {
             channelId: PRAYER_CHANNEL_ID,
         };
     }
-    return {}; // iOS doesn't use notification channels
+    return {};
+};
+
+/**
+ * Get the selected adhan sound file
+ */
+const getSelectedAdhanSound = async (): Promise<string> => {
+    try {
+        const selectedAdhan = await AsyncStorage.getItem('selectedAdhan');
+        if (selectedAdhan && ADHAN_SOUND_MAP[selectedAdhan]) {
+            return ADHAN_SOUND_MAP[selectedAdhan];
+        }
+        return ADHAN_SOUND_MAP['adhan1']; // Default fallback
+    } catch (error) {
+        console.error('Failed to get selected adhan:', error);
+        return ADHAN_SOUND_MAP['adhan1'];
+    }
 };
 
 /**
  * Initialize notification channel for Android
- * iOS doesn't need channels - this is Android-only
  */
 export const initializeNotificationChannel = async () => {
     if (Platform.OS === 'android') {
         try {
-            // Main prayer time notification channel with Adhan sound
+            const adhanSound = await getSelectedAdhanSound();
             await Notifications.setNotificationChannelAsync(PRAYER_CHANNEL_ID, {
                 name: 'Prayer Time Notifications',
                 importance: Notifications.AndroidImportance.MAX,
-                sound: 'adhan.mp3',
+                sound: adhanSound,
                 vibrationPattern: [0, 250, 250, 250],
                 lightColor: '#10B981',
                 lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -127,238 +184,88 @@ export const initializeNotificationChannel = async () => {
                     contentType: Notifications.AndroidAudioContentType.SONIFICATION,
                 },
             });
-            console.log('✅ Prayer notification channel created with Adhan sound');
+            console.log(`✅ Prayer notification channel created with Adhan sound: ${adhanSound}`);
         } catch (error) {
-            console.error('❌ Failed to create notification channel:', error);
+            await logError('initializeNotificationChannel', error);
         }
     } else {
-        // iOS doesn't need channels
-        console.log('✅ iOS notification system initialized (no channels needed)');
+        console.log('✅ iOS notification system initialized');
     }
 };
 
 /**
- * Background task that reschedules notifications daily
- * This runs even when the app is closed to ensure notifications continue indefinitely
- * Runs silently without console output
+ * Update notification channel with new adhan sound
+ * This recreates the channel by deleting and recreating it
  */
-TaskManager.defineTask(DAILY_RESCHEDULE_TASK, async () => {
+export const updateNotificationChannelSound = async (newAdhanId: string): Promise<boolean> => {
     try {
-        // Load saved location and adjustments from storage
-        const locationStr = await AsyncStorage.getItem('userLocation');
-        const adjustmentsStr = await AsyncStorage.getItem('userAdjustments');
+        console.log(`\n🔄 Updating notification channel with new adhan: ${newAdhanId}`);
 
-        if (!locationStr) {
-            return BackgroundFetch.BackgroundFetchResult.Failed;
-        }
+        // Save the new adhan selection to AsyncStorage
+        await AsyncStorage.setItem('selectedAdhan', newAdhanId);
+        console.log(`✅ Saved new adhan selection: ${newAdhanId}`);
 
-        const location = JSON.parse(locationStr);
-        const adjustments = adjustmentsStr ? JSON.parse(adjustmentsStr) : {
-            fajr: 0, sunrise: 0, zuhr: 0, asr: 0, maghrib: 0, isha: 0
-        };
-
-        // Calculate prayer times for multiple days based on platform
-        const now = new Date();
-        const daysToSchedule = getDaysToSchedule();
-        const daysArray: Array<{ date: Date; times: PrayerTimeResult }> = [];
-
-        for (let i = 0; i < daysToSchedule; i++) {
-            const targetDate = new Date(now);
-            targetDate.setDate(targetDate.getDate() + i);
-
-            const times = calculatePrayerTimes(location.lat, location.lng, targetDate, adjustments);
-            daysArray.push({ date: targetDate, times });
-        }
-
-        // Cancel existing notifications before scheduling new ones
-        await Notifications.cancelAllScheduledNotificationsAsync();
-
-        // Schedule notifications
-        await scheduleMultipleDays(daysArray);
-
-        // Update last schedule date
-        await AsyncStorage.setItem(LAST_SCHEDULE_DATE_KEY, now.toISOString());
-
-        // Reschedule midnight trigger (Android only)
         if (Platform.OS === 'android') {
-            await scheduleMidnightReschedule();
+            // Step 1: Delete the existing channel
+            console.log(`🗑️  Deleting old notification channel...`);
+            await Notifications.deleteNotificationChannelAsync(PRAYER_CHANNEL_ID);
+
+            // Step 2: Create new channel with the new sound
+            const newAdhanSound = ADHAN_SOUND_MAP[newAdhanId] || ADHAN_SOUND_MAP['adhan1'];
+            console.log(`🔔 Creating new channel with sound: ${newAdhanSound}`);
+
+            await Notifications.setNotificationChannelAsync(PRAYER_CHANNEL_ID, {
+                name: 'Prayer Time Notifications',
+                importance: Notifications.AndroidImportance.MAX,
+                sound: newAdhanSound,
+                vibrationPattern: [0, 250, 250, 250],
+                lightColor: '#10B981',
+                lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+                bypassDnd: true,
+                enableVibrate: true,
+                showBadge: true,
+                description: 'Notifications for prayer times with Adhan sound',
+                audioAttributes: {
+                    usage: Notifications.AndroidAudioUsage.NOTIFICATION,
+                    contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+                },
+            });
+
+            console.log(`✅ Notification channel recreated with new sound`);
+        } else {
+            // iOS doesn't use channels, just save the preference
+            console.log(`✅ iOS: Adhan preference saved (will apply to new notifications)`);
         }
 
-        return BackgroundFetch.BackgroundFetchResult.NewData;
+        // Step 3: Reschedule all notifications with the new sound
+        console.log(`🔄 Rescheduling notifications with new adhan sound...`);
+        const rescheduled = await scheduleNext2Prayers();
+
+        if (rescheduled) {
+            console.log(`✅ Notifications rescheduled successfully with ${newAdhanId}`);
+            console.log(`=========================================\n`);
+            return true;
+        } else {
+            console.log(`⚠️  Failed to reschedule notifications`);
+            return false;
+        }
     } catch (error) {
-        // Even if task fails, return NewData to prevent iOS from penalizing the app
-        // and reducing future background fetch opportunities
-        return BackgroundFetch.BackgroundFetchResult.Failed;
-    }
-});
-
-/**
- * Register the background task for daily rescheduling
- * This ensures notifications continue working indefinitely
- */
-export const registerDailyRescheduleTask = async () => {
-    try {
-        // Check if task is already registered
-        const isRegistered = await TaskManager.isTaskRegisteredAsync(DAILY_RESCHEDULE_TASK);
-
-        if (isRegistered) {
-            await BackgroundFetch.unregisterTaskAsync(DAILY_RESCHEDULE_TASK);
-        }
-
-        // Platform-specific configuration
-        const taskOptions: any = {
-            minimumInterval: 60 * 60, // Check every hour (Android minimum is 15 minutes)
-        };
-
-        // Android-specific options
-        if (Platform.OS === 'android') {
-            taskOptions.stopOnTerminate = false; // Continue after app is closed
-            taskOptions.startOnBoot = true; // Start after device reboot
-        }
-
-        // iOS handles these automatically via system
-
-        // Register the task to run every hour
-        await BackgroundFetch.registerTaskAsync(DAILY_RESCHEDULE_TASK, taskOptions);
-
-        const platform = Platform.OS === 'ios' ? 'iOS' : 'Android';
-        console.log(`✅ Daily reschedule background task registered for ${platform}`);
-
-        // Also schedule a midnight notification to trigger rescheduling
-        await scheduleMidnightReschedule();
-
-        return true;
-    } catch (error) {
-        console.error('❌ Failed to register background task:', error);
+        await logError('updateNotificationChannelSound', error);
         return false;
     }
 };
 
 /**
- * Schedule a notification at midnight to trigger rescheduling
- * This is a backup mechanism to ensure notifications are refreshed daily
- * Runs silently without console output
+ * Get the next 2 upcoming prayer times
  */
-const scheduleMidnightReschedule = async () => {
+const getNext2Prayers = async (): Promise<Array<{ name: string; time: Date; dateStr: string }>> => {
     try {
-        const now = new Date();
-        const midnight = new Date(now);
-        midnight.setHours(24, 0, 0, 0); // Next midnight
-
-        // Schedule a silent notification that will trigger rescheduling
-        await Notifications.scheduleNotificationAsync({
-            content: {
-                title: 'Prayer Times Updated',
-                body: 'Notifications refreshed for the new day',
-                data: { type: 'midnight-reschedule' },
-            },
-            trigger: {
-                date: midnight,
-            },
-        });
-    } catch (error) {
-        // Silently fail
-    }
-};
-
-/**
- * Format time remaining as countdown string
- */
-const formatCountdown = (milliseconds: number): string => {
-    const hours = Math.floor(milliseconds / (1000 * 60 * 60));
-    const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (hours > 0) {
-        return `in ${hours}h ${minutes}m`;
-    }
-    return `in ${minutes}m`;
-};
-
-/**
- * Helper function to schedule notifications for multiple days
- * This ensures notifications continue working even after all today's prayers have passed
- * Runs silently in the background without console output
- */
-const scheduleMultipleDays = async (days: Array<{ date: Date; times: PrayerTimeResult }>) => {
-    const now = new Date();
-    let scheduledCount = 0;
-
-    for (const { date, times } of days) {
-        const dateStr = date.toLocaleDateString();
-
-        const prayers = [
-            { name: 'Fajr', time: times.fajr, icon: '🌙' },
-            { name: 'Dhuhr', time: times.zuhr, icon: '☀️' },
-            { name: 'Asr', time: times.asr, icon: '🌤️' },
-            { name: 'Maghrib', time: times.maghrib, icon: '🌅' },
-            { name: 'Isha', time: times.isha, icon: '🌃' },
-        ];
-
-        for (const prayer of prayers) {
-            // Only schedule if the prayer time is at least 1 minute in the future
-            // This prevents notifications from firing immediately
-            const timeUntilPrayer = prayer.time.getTime() - now.getTime();
-            const minimumDelay = 60 * 1000; // 1 minute in milliseconds
-
-            if (timeUntilPrayer > minimumDelay) {
-                try {
-                    // Schedule prayer time notification with Adhan sound
-                    await Notifications.scheduleNotificationAsync({
-                        content: {
-                            title: `${prayer.icon} ${prayer.name} Prayer Time`,
-                            body: `It's time for ${prayer.name} prayer`,
-                            sound: 'adhan.mp3',
-                            ...getPriorityConfig(), // Platform-specific priority
-                            categoryIdentifier: 'prayer-time',
-                            // sticky and autoDismiss are Android-specific
-                            ...(Platform.OS === 'android' && {
-                                sticky: false,
-                                autoDismiss: true,
-                            }),
-                            data: {
-                                prayerName: prayer.name,
-                                type: 'prayer-time',
-                                icon: prayer.icon,
-                                date: dateStr,
-                            },
-                        },
-                        trigger: {
-                            date: prayer.time,
-                            ...getChannelConfig(), // Platform-specific channel (Android only)
-                        },
-                    });
-
-                    scheduledCount++;
-                } catch (scheduleError) {
-                    // Silently fail - don't spam console
-                }
-            }
-        }
-    }
-
-    return scheduledCount;
-};
-
-/**
- * Schedule prayer notifications for all prayer times
- * iOS: Schedules 7 days ahead (user opens app weekly)
- * Android: Schedules 2 days ahead (background task handles rest)
- * Runs silently in the background
- */
-export const schedulePrayerNotifications = async (prayerTimes: PrayerTimeResult) => {
-    try {
-        // Cancel all existing notifications first to avoid duplicates
-        await Notifications.cancelAllScheduledNotificationsAsync();
-
-        const now = new Date();
-        const daysToSchedule = getDaysToSchedule();
-
-        // Load location and adjustments
+        // Get location and adjustments from AsyncStorage
         const locationStr = await AsyncStorage.getItem('userLocation');
         const adjustmentsStr = await AsyncStorage.getItem('userAdjustments');
 
         if (!locationStr) {
-            return;
+            throw new Error('No location data available');
         }
 
         const location = JSON.parse(locationStr);
@@ -366,121 +273,246 @@ export const schedulePrayerNotifications = async (prayerTimes: PrayerTimeResult)
             fajr: 0, sunrise: 0, zuhr: 0, asr: 0, maghrib: 0, isha: 0
         };
 
-        // Calculate prayer times for multiple days
-        const daysArray: Array<{ date: Date; times: PrayerTimeResult }> = [];
+        const now = new Date();
+        const result: Array<{ name: string; time: Date; dateStr: string }> = [];
 
-        for (let i = 0; i < daysToSchedule; i++) {
+        // Calculate prayer times for today and tomorrow
+        for (let dayOffset = 0; dayOffset <= 1 && result.length < 2; dayOffset++) {
             const targetDate = new Date(now);
-            targetDate.setDate(targetDate.getDate() + i);
+            targetDate.setDate(targetDate.getDate() + dayOffset);
 
-            const times = i === 0
-                ? prayerTimes // Use provided times for today
-                : calculatePrayerTimes(location.lat, location.lng, targetDate, adjustments);
+            const times = calculatePrayerTimes(location.lat, location.lng, targetDate, adjustments);
+            const dateStr = targetDate.toLocaleDateString();
 
-            daysArray.push({ date: targetDate, times });
+            const prayers = [
+                { name: 'Fajr', time: times.fajr },
+                { name: 'Dhuhr', time: times.zuhr },
+                { name: 'Asr', time: times.asr },
+                { name: 'Maghrib', time: times.maghrib },
+                { name: 'Isha', time: times.isha },
+            ];
+
+            for (const prayer of prayers) {
+                const timeUntilPrayer = prayer.time.getTime() - now.getTime();
+
+                // Only add prayers that are at least 5 minutes in the future
+                if (timeUntilPrayer > MINIMUM_SCHEDULE_DELAY_MS) {
+                    result.push({
+                        name: prayer.name,
+                        time: prayer.time,
+                        dateStr: dateStr,
+                    });
+
+                    // Stop when we have 2 prayers
+                    if (result.length === 2) {
+                        break;
+                    }
+                }
+            }
         }
 
-        await scheduleMultipleDays(daysArray);
-
-        // Save the last schedule date
-        await AsyncStorage.setItem(LAST_SCHEDULE_DATE_KEY, now.toISOString());
-
-        // Schedule midnight reschedule trigger (primarily for Android)
-        if (Platform.OS === 'android') {
-            await scheduleMidnightReschedule();
-        }
-
+        return result;
     } catch (error) {
-        // Silently fail
+        await logError('getNext2Prayers', error);
+        return [];
     }
 };
 
 /**
- * Check if notifications need to be rescheduled
- * This runs on app startup to ensure notifications are always active
- * Runs silently without console output
+ * Schedule the next 2 upcoming prayer notifications
+ * This is the core function of the simplified notification system
+ */
+export const scheduleNext2Prayers = async (): Promise<boolean> => {
+    try {
+        console.log('\n🔔 ===== SCHEDULING NEXT 2 PRAYERS =====');
+        console.log(`🕐 Current time: ${new Date().toLocaleString()}`);
+
+        // Cancel all existing notifications
+        await Notifications.cancelAllScheduledNotificationsAsync();
+        console.log('🗑️  Cleared all existing notifications');
+
+        // Get next 2 prayers
+        const prayers = await getNext2Prayers();
+
+        if (prayers.length === 0) {
+            console.log('⚠️  No upcoming prayers found to schedule');
+            return false;
+        }
+
+        console.log(`📋 Found ${prayers.length} upcoming prayer(s) to schedule\n`);
+
+        // Get location for notification body
+        const locationStr = await AsyncStorage.getItem('userLocation');
+        let locationText = '';
+        if (locationStr) {
+            const location = JSON.parse(locationStr);
+            locationText = location.name || '';
+        }
+
+        // Get the selected adhan sound
+        const adhanSound = await getSelectedAdhanSound();
+        console.log(`🔊 Using adhan sound: ${adhanSound}`);
+
+        let scheduledCount = 0;
+
+        // Schedule each prayer
+        for (let i = 0; i < prayers.length; i++) {
+            const prayer = prayers[i];
+            const timeString = prayer.time.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+            });
+
+            const minutesAway = Math.floor((prayer.time.getTime() - Date.now()) / 60000);
+            console.log(`✅ Scheduling ${prayer.name} for ${timeString} (${minutesAway} minutes away)`);
+
+            // Schedule notification
+            const notificationId = await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: `It's time for ${prayer.name}`,
+                    body: `${timeString} - ${locationText}`,
+                    sound: adhanSound,
+                    ...getPriorityConfig(),
+                    categoryIdentifier: 'prayer-time',
+                    ...(Platform.OS === 'android' && {
+                        sticky: false,
+                        autoDismiss: true,
+                    }),
+                    data: {
+                        prayerName: prayer.name,
+                        type: 'prayer-time',
+                        date: prayer.dateStr,
+                        position: i + 1, // 1 for first prayer, 2 for second
+                        scheduledAt: Date.now(),
+                    },
+                },
+                trigger: {
+                    type: Notifications.SchedulableTriggerInputTypes.DATE,
+                    date: prayer.time,
+                    ...getChannelConfig(),
+                },
+            });
+
+            if (notificationId) {
+                scheduledCount++;
+            } else {
+                console.error(`❌ Failed to schedule ${prayer.name}`);
+            }
+        }
+
+        console.log(`\n📊 Successfully scheduled ${scheduledCount} prayer notification(s)`);
+        console.log('=========================================\n');
+
+        return scheduledCount > 0;
+    } catch (error) {
+        await logError('scheduleNext2Prayers', error);
+        return false;
+    }
+};
+
+/**
+ * Initialize the notification listener for auto-rescheduling
+ * This creates a self-sustaining cycle where each notification triggers scheduling of the next 2
+ */
+export const initializeNotificationListener = () => {
+    // Listen for when notifications are received (fires in both foreground and background)
+    Notifications.addNotificationReceivedListener(async (notification) => {
+        const notificationType = notification.request.content.data?.type;
+        const prayerName = notification.request.content.data?.prayerName;
+
+        if (notificationType === 'prayer-time') {
+            console.log(`\n🕌 Prayer notification received: ${prayerName}`);
+            console.log('🔄 Auto-scheduling next 2 prayers...');
+
+            // Wait a moment to prevent any potential race conditions
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Schedule the next 2 prayers
+            const success = await scheduleNext2Prayers();
+
+            if (success) {
+                console.log('✅ Auto-reschedule completed successfully');
+            } else {
+                console.log('⚠️  Auto-reschedule failed, will retry on app open');
+            }
+        }
+    });
+
+    console.log('👂 Notification listener initialized for auto-rescheduling');
+};
+
+/**
+ * Ensure notifications are properly scheduled (fallback check)
+ * Call this when the app opens to ensure we always have 2 notifications scheduled
  */
 export const ensureNotificationsScheduled = async () => {
     try {
         const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-        const lastScheduleStr = await AsyncStorage.getItem(LAST_SCHEDULE_DATE_KEY);
-
         const now = new Date();
-        const today = now.toDateString();
 
-        let needsReschedule = false;
-
-        // Check if we have no scheduled notifications
-        if (scheduled.length === 0) {
-            needsReschedule = true;
-        }
-        // Check if last schedule was on a different day
-        else if (lastScheduleStr) {
-            const lastSchedule = new Date(lastScheduleStr);
-            if (lastSchedule.toDateString() !== today) {
-                needsReschedule = true;
+        // Filter for future notifications only
+        const futureNotifications = scheduled.filter(notif => {
+            const trigger = notif.trigger as any;
+            if (trigger.value) {
+                const triggerDate = new Date(trigger.value);
+                return triggerDate > now;
             }
-        }
-        // Check if we have notifications but they're all in the past
-        else {
-            const allPassed = scheduled.every(notif => {
-                const trigger = notif.trigger as any;
-                if (trigger.value) {
-                    const triggerDate = new Date(trigger.value);
-                    return triggerDate < now;
-                }
-                return true;
-            });
+            return false;
+        });
 
-            if (allPassed) {
-                needsReschedule = true;
+        console.log(`\n🔍 Notification Health Check`);
+        console.log(`📋 Total scheduled: ${scheduled.length}`);
+        console.log(`⏰ Future notifications: ${futureNotifications.length}`);
+
+        // If we don't have exactly 2 future notifications, reschedule
+        if (futureNotifications.length !== 2) {
+            console.log(`⚠️  Expected 2 notifications, found ${futureNotifications.length}`);
+            console.log('🔄 Rescheduling to ensure 2 notifications...');
+
+            const success = await scheduleNext2Prayers();
+
+            if (success) {
+                console.log('✅ Notifications restored to healthy state');
             }
+
+            return success;
+        } else {
+            console.log('✅ Notifications are healthy (2 scheduled)\n');
+            return true;
         }
-
-        if (needsReschedule) {
-            // Load saved settings and reschedule
-            const locationStr = await AsyncStorage.getItem('userLocation');
-            const adjustmentsStr = await AsyncStorage.getItem('userAdjustments');
-
-            if (locationStr) {
-                const location = JSON.parse(locationStr);
-                const adjustments = adjustmentsStr ? JSON.parse(adjustmentsStr) : {
-                    fajr: 0, sunrise: 0, zuhr: 0, asr: 0, maghrib: 0, isha: 0
-                };
-
-                const daysToSchedule = getDaysToSchedule();
-                const daysArray: Array<{ date: Date; times: PrayerTimeResult }> = [];
-
-                // Calculate prayer times for multiple days
-                for (let i = 0; i < daysToSchedule; i++) {
-                    const targetDate = new Date(now);
-                    targetDate.setDate(targetDate.getDate() + i);
-
-                    const times = calculatePrayerTimes(location.lat, location.lng, targetDate, adjustments);
-                    daysArray.push({ date: targetDate, times });
-                }
-
-                await Notifications.cancelAllScheduledNotificationsAsync();
-                await scheduleMultipleDays(daysArray);
-
-                await AsyncStorage.setItem(LAST_SCHEDULE_DATE_KEY, now.toISOString());
-
-                if (Platform.OS === 'android') {
-                    await scheduleMidnightReschedule();
-                }
-            }
-        }
-
-        return true;
     } catch (error) {
+        await logError('ensureNotificationsScheduled', error);
         return false;
     }
 };
 
 /**
- * Request notification permissions and initialize channel
- * Note: Does NOT schedule notifications immediately to prevent sound on app load
- * Notifications are scheduled by AppContext when location/settings change
+ * Main function to schedule prayer notifications
+ * Simplified to use the 2-prayer system
+ */
+export const schedulePrayerNotifications = async (prayerTimes: PrayerTimeResult) => {
+    try {
+        console.log('📱 Initializing prayer notification system...');
+
+        // Simply schedule the next 2 prayers
+        const success = await scheduleNext2Prayers();
+
+        if (success) {
+            console.log('✅ Prayer notifications initialized successfully');
+        } else {
+            console.log('⚠️  Failed to initialize prayer notifications');
+        }
+
+        return success;
+    } catch (error) {
+        await logError('schedulePrayerNotifications', error);
+        return false;
+    }
+};
+
+/**
+ * Request notification permissions and initialize
  */
 export const requestNotificationPermissions = async () => {
     try {
@@ -493,58 +525,70 @@ export const requestNotificationPermissions = async () => {
         }
 
         if (finalStatus === 'granted') {
-            // Initialize notification channel after permissions are granted
             await initializeNotificationChannel();
+            initializeNotificationListener(); // Set up auto-reschedule listener
 
-            // Register background task for daily rescheduling
-            await registerDailyRescheduleTask();
-
-            // DON'T call ensureNotificationsScheduled() here - it causes immediate notifications on app load
-            // The AppContext will handle scheduling when location/settings are available
-
+            console.log('✅ Notification permissions granted and system initialized');
             return true;
         } else {
+            console.log('❌ Notification permissions denied');
             return false;
         }
     } catch (error) {
+        await logError('requestNotificationPermissions', error);
         return false;
     }
 };
 
 /**
- * Send a test notification immediately (for testing purposes)
+ * Send a test notification immediately
  */
 export const sendTestNotification = async (delaySeconds: number = 5) => {
     try {
-        // Test prayer time notification with Adhan sound
+        const locationStr = await AsyncStorage.getItem('userLocation');
+        let locationText = '';
+        if (locationStr) {
+            const location = JSON.parse(locationStr);
+            locationText = location.name || '';
+        }
+
+        const adhanSound = await getSelectedAdhanSound();
+
+        const testTime = new Date();
+        testTime.setSeconds(testTime.getSeconds() + delaySeconds);
+        const timeString = testTime.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+        });
+
         const prayerTestId = await Notifications.scheduleNotificationAsync({
             content: {
-                title: '🕌 TEST: Fajr Prayer Time',
-                body: "It's time for Fajr prayer (TEST - Adhan should play)",
-                sound: 'adhan.mp3', // This will play the Adhan from assets/adhan.mp3
-                ...getPriorityConfig(), // Platform-specific priority
+                title: 'It\'s time for Fajr',
+                body: `${timeString} - ${locationText}`,
+                sound: adhanSound,
+                ...getPriorityConfig(),
                 categoryIdentifier: 'prayer-time',
-                // sticky and autoDismiss are Android-specific
                 ...(Platform.OS === 'android' && {
                     sticky: false,
                     autoDismiss: true,
                 }),
                 data: {
                     prayerName: 'Fajr',
-                    type: 'test-notification', // Mark as test notification
-                    icon: '🌙',
+                    type: 'test-notification',
+                    scheduledAt: Date.now(),
                 },
             },
             trigger: {
                 seconds: delaySeconds,
-                ...getChannelConfig(), // Platform-specific channel (Android only)
+                ...getChannelConfig(),
             },
         });
 
-        console.log(`🧪 Test prayer notification scheduled! Will appear in ${delaySeconds} seconds with Adhan sound`);
+        console.log(`🧪 Test notification scheduled! Will appear in ${delaySeconds} seconds with ${adhanSound}`);
         return { prayerTestId };
     } catch (error) {
-        console.error('❌ Failed to send test notification:', error);
+        await logError('sendTestNotification', error);
         return null;
     }
 };
@@ -556,9 +600,9 @@ export const debugScheduledNotifications = async () => {
     try {
         const scheduled = await Notifications.getAllScheduledNotificationsAsync();
         const now = new Date();
-        console.log('📋 Scheduled Notifications:', scheduled.length);
-        console.log('📅 Current time:', now.toLocaleString());
-        console.log('');
+        console.log('\n📋 ===== SCHEDULED NOTIFICATIONS DEBUG =====');
+        console.log(`Total scheduled: ${scheduled.length}`);
+        console.log(`Current time: ${now.toLocaleString()}\n`);
 
         scheduled.forEach((notif, index) => {
             const trigger = notif.trigger as any;
@@ -567,97 +611,84 @@ export const debugScheduledNotifications = async () => {
             const hoursUntil = timeUntil ? Math.floor(timeUntil / (1000 * 60 * 60)) : null;
             const minutesUntil = timeUntil ? Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60)) : null;
 
-            console.log(`  ${index + 1}. ${notif.content.title}`);
-            console.log(`     📍 Scheduled for: ${triggerDate?.toLocaleString() || 'Unknown'}`);
+            console.log(`${index + 1}. ${notif.content.title}`);
+            console.log(`   📍 Scheduled for: ${triggerDate?.toLocaleString() || 'Unknown'}`);
             if (hoursUntil !== null && minutesUntil !== null) {
                 if (timeUntil! > 0) {
-                    console.log(`     ⏰ Fires in: ${hoursUntil}h ${minutesUntil}m`);
+                    console.log(`   ⏰ Fires in: ${hoursUntil}h ${minutesUntil}m`);
                 } else {
-                    console.log(`     ⚠️  PAST TIME (should have fired already!)`);
+                    console.log(`   ⚠️  PAST TIME (should have fired already!)`);
                 }
             }
+
+            const position = notif.content.data?.position;
+            if (position) {
+                console.log(`   🔢 Position: ${position} of 2`);
+            }
+
             console.log('');
         });
 
+        console.log('==========================================\n');
         return scheduled;
     } catch (error) {
-        console.error('❌ Failed to get scheduled notifications:', error);
+        await logError('debugScheduledNotifications', error);
         return [];
     }
 };
 
 /**
- * Get background task status and information
- * This helps diagnose if background tasks are working properly
+ * Force reschedule notifications (manual trigger)
  */
-export const getBackgroundTaskStatus = async () => {
+export const forceReschedule = async () => {
     try {
-        const isRegistered = await TaskManager.isTaskRegisteredAsync(DAILY_RESCHEDULE_TASK);
-        const status = await BackgroundFetch.getStatusAsync();
+        console.log('🔄 Force rescheduling notifications...');
+        const success = await scheduleNext2Prayers();
 
-        const statusMap: Record<number, string> = {
-            [BackgroundFetch.BackgroundFetchStatus.Restricted]: 'Restricted (iOS)',
-            [BackgroundFetch.BackgroundFetchStatus.Denied]: 'Denied',
-            [BackgroundFetch.BackgroundFetchStatus.Available]: 'Available',
-        };
+        if (success) {
+            console.log('✅ Force reschedule completed');
+        } else {
+            console.log('⚠️  Force reschedule failed');
+        }
 
-        const info = {
-            taskRegistered: isRegistered,
-            backgroundFetchStatus: statusMap[status] || 'Unknown',
-            statusCode: status,
-        };
-
-        console.log('📊 Background Task Status:', info);
-        return info;
+        return success;
     } catch (error) {
-        console.error('❌ Failed to get background task status:', error);
-        return null;
+        await logError('forceReschedule', error);
+        return false;
     }
 };
 
 /**
- * Force reschedule notifications (manual trigger)
- * This can be called from UI if user notices notifications stopped
- * Runs silently without console output
+ * Get notification health status (for UI display)
  */
-export const forceReschedule = async () => {
+export const getNotificationHealthStatus = async () => {
     try {
-        const locationStr = await AsyncStorage.getItem('userLocation');
-        const adjustmentsStr = await AsyncStorage.getItem('userAdjustments');
-
-        if (!locationStr) {
-            return false;
-        }
-
-        const location = JSON.parse(locationStr);
-        const adjustments = adjustmentsStr ? JSON.parse(adjustmentsStr) : {
-            fajr: 0, sunrise: 0, zuhr: 0, asr: 0, maghrib: 0, isha: 0
-        };
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        const errorLogs = await getErrorLogs();
 
         const now = new Date();
-        const daysToSchedule = getDaysToSchedule();
-        const daysArray: Array<{ date: Date; times: PrayerTimeResult }> = [];
+        const upcomingNotifications = scheduled.filter(notif => {
+            const trigger = notif.trigger as any;
+            if (trigger.value) {
+                const triggerDate = new Date(trigger.value);
+                return triggerDate > now;
+            }
+            return false;
+        });
 
-        // Calculate prayer times for multiple days
-        for (let i = 0; i < daysToSchedule; i++) {
-            const targetDate = new Date(now);
-            targetDate.setDate(targetDate.getDate() + i);
+        // Healthy if we have exactly 2 upcoming notifications and few errors
+        const isHealthy = upcomingNotifications.length === 2 && errorLogs.length < 3;
 
-            const times = calculatePrayerTimes(location.lat, location.lng, targetDate, adjustments);
-            daysArray.push({ date: targetDate, times });
-        }
-
-        await Notifications.cancelAllScheduledNotificationsAsync();
-        await scheduleMultipleDays(daysArray);
-
-        await AsyncStorage.setItem(LAST_SCHEDULE_DATE_KEY, now.toISOString());
-
-        if (Platform.OS === 'android') {
-            await scheduleMidnightReschedule();
-        }
-
-        return true;
+        return {
+            totalScheduled: scheduled.length,
+            upcomingNotifications: upcomingNotifications.length,
+            expectedCount: 2,
+            recentErrors: errorLogs.length,
+            isHealthy: isHealthy,
+            status: isHealthy ? 'Healthy' : upcomingNotifications.length === 0 ? 'No notifications' : `Expected 2, have ${upcomingNotifications.length}`,
+        };
     } catch (error) {
-        return false;
+        await logError('getNotificationHealthStatus', error);
+        return null;
     }
 };

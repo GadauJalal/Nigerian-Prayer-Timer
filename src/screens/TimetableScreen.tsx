@@ -9,6 +9,8 @@ import { formatDate, formatTime, getHijriMonth } from '../utils/date';
 import { startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isSameDay } from 'date-fns';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
 
 const TimetableScreen = ({ navigation }: any) => {
     const { location, adjustments } = useApp();
@@ -52,59 +54,364 @@ const TimetableScreen = ({ navigation }: any) => {
         const monthName = currentMonth.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
         const hijriMonth = getHijriMonth(currentMonth);
 
+        // Convert logo to base64 for embedding in PDF
+        let logoBase64 = '';
+        try {
+            const asset = Asset.fromModule(require('../../assets/Prayerlogo.png'));
+            await asset.downloadAsync();
+            const base64 = await FileSystem.readAsStringAsync(asset.localUri!, { encoding: FileSystem.EncodingType.Base64 });
+            logoBase64 = `data:image/png;base64,${base64}`;
+        } catch (error) {
+            console.error('Failed to load logo:', error);
+        }
+
+        // Convert app store badges to base64 for embedding in PDF
+        let storeBadgesBase64 = '';
+        try {
+            const badgesAsset = Asset.fromModule(require('../../assets/app-store-and-google-play-badge-png.png'));
+            await badgesAsset.downloadAsync();
+            const badgesBase64 = await FileSystem.readAsStringAsync(badgesAsset.localUri!, { encoding: FileSystem.EncodingType.Base64 });
+            storeBadgesBase64 = `data:image/png;base64,${badgesBase64}`;
+        } catch (error) {
+            console.error('Failed to load store badges:', error);
+        }
+
+        // Split timetable: first 13 days on page 1, rest on page 2
+        const firstHalf = timetable.slice(0, 13);
+        const secondHalf = timetable.slice(13);
+
         const htmlContent = `
-      <html>
-        <head>
-          <style>
-            body { font-family: Helvetica, Arial, sans-serif; padding: 20px; background: #f9fafb; }
-            h1 { text-align: center; color: #047857; margin-bottom: 8px; }
-            h2 { text-align: center; color: #64748b; font-size: 16px; font-weight: normal; }
-            .location { text-align: center; color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 12px; overflow: hidden; }
-            th, td { padding: 12px 8px; text-align: center; }
-            th { background-color: #047857; color: white; font-weight: 600; font-size: 13px; }
-            td { border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #334155; }
-            tr:last-child td { border-bottom: none; }
-            tr:nth-child(even) { background-color: #f8fafc; }
-            .today { background-color: #ecfdf5 !important; font-weight: bold; color: #047857; }
-            .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #94a3b8; }
-          </style>
-        </head>
-        <body>
-          <h1>Prayer Timetable</h1>
-          <h2>${monthName}</h2>
-          <div class="location">${location.name} • ${hijriMonth}</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Fajr</th>
-                <th>Zuhr</th>
-                <th>Asr</th>
-                <th>Maghrib</th>
-                <th>Isha</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${timetable.map(item => {
-                const isToday = isSameDay(item.date, new Date());
-                const rowClass = isToday ? ' class="today"' : '';
-                return `
-                <tr${rowClass}>
-                  <td>${formatDate(item.date, 'd MMM')}</td>
-                  <td>${formatTime(item.prayers.fajr)}</td>
-                  <td>${formatTime(item.prayers.zuhr)}</td>
-                  <td>${formatTime(item.prayers.asr)}</td>
-                  <td>${formatTime(item.prayers.maghrib)}</td>
-                  <td>${formatTime(item.prayers.isha)}</td>
-                </tr>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page { 
+      margin: 0; 
+      size: A4 portrait;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
+      margin: 0; 
+      padding: 0; 
+      background: #f9fafb;
+    }
+    
+    .page {
+      background: #f9fafb;
+      width: 210mm;
+      height: 297mm;
+      padding: 40px 35px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .page-break {
+      page-break-after: always;
+      break-after: page;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+      gap: 24px;
+      flex-shrink: 0;
+    }
+    
+    .header-left {
+      flex: 1;
+      text-align: left;
+    }
+    
+    .header-right {
+      flex: 0 0 auto;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .logo-container {
+      margin-bottom: 8px;
+    }
+    
+    .logo {
+      width: 80px;
+      height: auto;
+      display: inline-block;
+    }
+    
+    .app-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1F2937;
+      margin: 6px 0 18px 0;
+    }
+    
+    .generated-by {
+      font-size: 10px;
+      color: #374151;
+      font-weight: 600;
+      margin: 0 0 6px 0;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    
+    .app-stores {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+    }
+    
+    .store-badge {
+      height: 32px;
+      width: auto;
+    }
+    
+    h1 { 
+      color: #1F2937; 
+      margin: 0 0 6px 0; 
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+    }
+    
+    h2 { 
+      color: #1F2937; 
+      font-size: 22px; 
+      font-weight: 600; 
+      margin: 0 0 8px 0;
+      line-height: 1.2;
+    }
+    
+    .hijri-date { 
+      color: #10B981; 
+      font-size: 14px; 
+      margin: 0 0 3px 0;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+    
+    .location { 
+      color: #6B7280; 
+      font-size: 13px; 
+      margin: 0;
+      line-height: 1.3;
+    }
+    
+    .table-container {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      background: white; 
+      border-radius: 10px; 
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    th, td { 
+      padding: 10px 6px; 
+      text-align: center;
+      font-size: 12px;
+    }
+    
+    th { 
+      background-color: #10B981; 
+      color: white; 
+      font-weight: 600; 
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+    
+    td { 
+      border-bottom: 1px solid #E5E7EB; 
+      color: #374151;
+      font-weight: 500;
+      line-height: 1.2;
+    }
+    
+    tr:last-child td { 
+      border-bottom: none; 
+    }
+    
+    tr:nth-child(even) {
+      background-color: #F9FAFB;
+    }
+    
+    .day-cell {
+      font-weight: 600;
+      color: #1F2937;
+      font-size: 13px;
+    }
+    
+    .day-name {
+      font-size: 9px;
+      color: #9CA3AF;
+      display: block;
+      margin-top: 2px;
+      font-weight: 400;
+      line-height: 1;
+    }
+    
+    .friday-row {
+      background-color: #ECFDF5 !important;
+    }
+    
+    .friday-row .day-cell {
+      color: #10B981;
+      font-weight: 700;
+    }
+    
+    /* Print-specific optimizations */
+    @media print {
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      
+      .page {
+        margin: 0;
+        padding: 40px 35px;
+      }
+      
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- PAGE 1: Days 1-13 -->
+  <div class="page page-break">
+    <div class="header">
+      <div class="header-left">
+        ${logoBase64 ? `<div class="logo-container">
+          <img src="${logoBase64}" alt="Prayer Times Nigeria Logo" class="logo">
+        </div>` : ''}
+        
+        <h1>Prayer Timetable</h1>
+        <h2>${monthName}</h2>
+        <p class="hijri-date">${hijriMonth}</p>
+        <p class="location">${location.name}, Nigeria</p>
+      </div>
+      
+      <div class="header-right">
+        <p class="generated-by">Generated by<br>Prayer Times Nigeria</p>
+        ${storeBadgesBase64 ? `<div class="app-stores">
+          <img src="${storeBadgesBase64}" alt="Download on App Store and Google Play" class="store-badge">
+        </div>` : ''}
+      </div>
+    </div>
+    
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>DAY</th>
+            <th>FAJR</th>
+            <th>SUNRISE</th>
+            <th>DHUHR</th>
+            <th>ASR</th>
+            <th>MAGHRIB</th>
+            <th>ISHA</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${firstHalf.map(item => {
+            const dayName = item.date.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayNumber = item.date.getDate();
+            const isFriday = item.date.getDay() === 5;
+            return `
+            <tr${isFriday ? ' class="friday-row"' : ''}>
+              <td class="day-cell">${dayNumber}<span class="day-name">${dayName}</span></td>
+              <td>${formatTime(item.prayers.fajr)}</td>
+              <td>${formatTime(item.prayers.sunrise)}</td>
+              <td>${formatTime(item.prayers.zuhr)}</td>
+              <td>${formatTime(item.prayers.asr)}</td>
+              <td>${formatTime(item.prayers.maghrib)}</td>
+              <td>${formatTime(item.prayers.isha)}</td>
+            </tr>
               `;
-              }).join('')}
-            </tbody>
-          </table>
-          <div class="footer">Generated by Islamic Prayer Time App</div>
-        </body>
-      </html>
+        }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAGE 2: Days 14-31 -->
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <h1>Prayer Timetable - ${monthName}</h1>
+        <p class="hijri-date">${location.name}, Nigeria (continued)</p>
+      </div>
+      
+      <div class="header-right">
+        <p class="generated-by">Generated by<br>Prayer Times Nigeria</p>
+        ${storeBadgesBase64 ? `<div class="app-stores">
+          <img src="${storeBadgesBase64}" alt="Download on App Store and Google Play" class="store-badge">
+        </div>` : ''}
+      </div>
+    </div>
+    
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>DAY</th>
+            <th>FAJR</th>
+            <th>SUNRISE</th>
+            <th>DHUHR</th>
+            <th>ASR</th>
+            <th>MAGHRIB</th>
+            <th>ISHA</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${secondHalf.map(item => {
+            const dayName = item.date.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayNumber = item.date.getDate();
+            const isFriday = item.date.getDay() === 5;
+            return `
+            <tr${isFriday ? ' class="friday-row"' : ''}>
+              <td class="day-cell">${dayNumber}<span class="day-name">${dayName}</span></td>
+              <td>${formatTime(item.prayers.fajr)}</td>
+              <td>${formatTime(item.prayers.sunrise)}</td>
+              <td>${formatTime(item.prayers.zuhr)}</td>
+              <td>${formatTime(item.prayers.asr)}</td>
+              <td>${formatTime(item.prayers.maghrib)}</td>
+              <td>${formatTime(item.prayers.isha)}</td>
+            </tr>
+              `;
+        }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
     `;
 
         try {

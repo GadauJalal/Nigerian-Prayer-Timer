@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useRef } from 'r
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { City, NIGERIA_LOCATIONS } from '../data/nigeria_locations';
 import { calculatePrayerTimes, PrayerTimeResult } from '../utils/prayerTimes';
-import { schedulePrayerNotifications, requestNotificationPermissions } from '../utils/notifications';
+import { schedulePrayerNotifications, requestNotificationPermissions, initializeNotificationChannel } from '../utils/notifications';
 
 interface Adjustments {
     [key: string]: number;
@@ -24,6 +24,10 @@ interface AppContextType {
     setAdjustments: (adj: Adjustments) => void;
     theme: 'light' | 'dark';
     toggleTheme: () => void;
+    hasCompletedOnboarding: boolean;
+    completeOnboarding: () => void;
+    selectedAdhan: string;
+    setSelectedAdhan: (adhan: string) => void;
 }
 
 const defaultAdjustments: Adjustments = {
@@ -43,6 +47,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [adjustments, setAdjustmentsState] = useState<Adjustments>(defaultAdjustments);
     const [theme, setTheme] = useState<'light' | 'dark'>('light');
     const [loading, setLoading] = useState(true);
+    const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+    const [selectedAdhan, setSelectedAdhanState] = useState<string>('adhan1');
 
     // Use ref to track last scheduled config to prevent duplicate scheduling
     const lastScheduledConfig = useRef<string>('');
@@ -50,10 +56,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         loadSettings();
         requestNotificationPermissions();
+
+        return () => {
+            // Cleanup if needed
+        };
     }, []);
 
     useEffect(() => {
-        if (location) {
+        // CRITICAL: Only schedule notifications AFTER onboarding is complete
+        // This prevents scheduling with default location before user selects their city
+        if (location && hasCompletedOnboarding) {
             refreshPrayerTimes();
             saveSettings();
 
@@ -67,21 +79,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (configKey !== lastScheduledConfig.current) {
                 lastScheduledConfig.current = configKey;
                 const times = calculatePrayerTimes(location.lat, location.lng, new Date(), adjustments);
-                // Schedule in background - the 1-minute delay in scheduleMultipleDays prevents immediate notifications
-                schedulePrayerNotifications(times);
+
+                // Delay scheduling by 2 seconds to ensure app is fully loaded
+                // This prevents notifications from firing immediately when app is minimized
+                setTimeout(() => {
+                    console.log('📍 Scheduling notifications for:', location.name);
+                    schedulePrayerNotifications(times);
+                }, 2000);
             }
         }
-    }, [location, adjustments]); // Removed 'theme' to prevent rescheduling on theme changes
+    }, [location, adjustments, hasCompletedOnboarding, selectedAdhan]); // Added hasCompletedOnboarding and selectedAdhan dependencies
 
     const loadSettings = async () => {
         try {
             const savedLocation = await AsyncStorage.getItem('userLocation');
             const savedAdjustments = await AsyncStorage.getItem('userAdjustments');
             const savedTheme = await AsyncStorage.getItem('userTheme');
+            const savedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
+            const savedAdhan = await AsyncStorage.getItem('selectedAdhan');
 
             if (savedLocation) {
                 setLocationState(JSON.parse(savedLocation));
             } else {
+                // Set default location (Lagos) for display purposes only
+                // Notifications won't schedule until hasCompletedOnboarding is true
                 const defaultLocation = NIGERIA_LOCATIONS.find(s => s.name === 'Lagos')?.cities[0];
                 if (defaultLocation) setLocationState(defaultLocation);
             }
@@ -92,6 +113,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (savedTheme) {
                 setTheme(savedTheme as 'light' | 'dark');
+            }
+
+            if (savedOnboarding) {
+                setHasCompletedOnboarding(savedOnboarding === 'true');
+            }
+
+            if (savedAdhan) {
+                setSelectedAdhanState(savedAdhan);
             }
         } catch (e) {
             console.error('Failed to load settings', e);
@@ -107,6 +136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             await AsyncStorage.setItem('userAdjustments', JSON.stringify(adjustments));
             await AsyncStorage.setItem('userTheme', theme);
+            await AsyncStorage.setItem('selectedAdhan', selectedAdhan);
         } catch (e) {
             console.error('Failed to save settings', e);
         }
@@ -124,6 +154,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTheme(prev => prev === 'light' ? 'dark' : 'light');
     };
 
+    const setSelectedAdhan = async (adhan: string) => {
+        setSelectedAdhanState(adhan);
+        // Reinitialize notification channel with new sound (for Android)
+        await initializeNotificationChannel();
+    };
+
     const refreshPrayerTimes = () => {
         if (location) {
             const times = calculatePrayerTimes(location.lat, location.lng, new Date(), adjustments);
@@ -131,8 +167,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     };
 
+    const completeOnboarding = async () => {
+        try {
+            await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+            setHasCompletedOnboarding(true);
+        } catch (e) {
+            console.error('Failed to save onboarding status', e);
+        }
+    };
+
     return (
-        <AppContext.Provider value={{ location, setLocation, prayerTimes, loading, refreshPrayerTimes, adjustments, setAdjustments, theme, toggleTheme }}>
+        <AppContext.Provider value={{ location, setLocation, prayerTimes, loading, refreshPrayerTimes, adjustments, setAdjustments, theme, toggleTheme, hasCompletedOnboarding, completeOnboarding, selectedAdhan, setSelectedAdhan }}>
             {children}
         </AppContext.Provider>
     );
@@ -145,3 +190,5 @@ export const useApp = () => {
     }
     return context;
 };
+
+export const useAppContext = useApp;

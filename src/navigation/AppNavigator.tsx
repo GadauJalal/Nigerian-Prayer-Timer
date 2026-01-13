@@ -3,15 +3,18 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ActivityIndicator, View } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
 import TimetableScreen from '../screens/TimetableScreen';
 import QiblaScreen from '../screens/QiblaScreen';
 import LocationScreen from '../screens/LocationScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
 import { BottomNavigation } from '../components/BottomNavigation';
 import { COLORS } from '../constants/theme';
 import { ThemeProvider, useThemeContext } from '../context/ThemeContext';
+import { useAppContext } from '../context/AppContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -75,12 +78,31 @@ function RootNavigator() {
     );
 }
 
+function AppContent() {
+    const { hasCompletedOnboarding, loading } = useAppContext();
+    const { isDarkMode } = useThemeContext();
+
+    if (loading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDarkMode ? COLORS.dark.background : COLORS.background }}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
+    }
+
+    if (!hasCompletedOnboarding) {
+        return <OnboardingScreen />;
+    }
+
+    return <RootNavigator />;
+}
+
 export default function AppNavigator() {
     return (
         <SafeAreaProvider>
             <ThemeProvider>
                 <NavigationContainer>
-                    <RootNavigator />
+                    <AppContent />
                 </NavigationContainer>
             </ThemeProvider>
         </SafeAreaProvider>

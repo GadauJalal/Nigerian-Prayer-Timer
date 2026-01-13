@@ -1,7 +1,6 @@
 import { registerRootComponent } from 'expo';
 
-// IMPORTANT: Import notifications module BEFORE App to ensure TaskManager is defined
-// This allows background tasks to work even when the app is closed
+// Import notifications module to set up local notification handlers
 import './src/utils/notifications';
 
 import App from './App';

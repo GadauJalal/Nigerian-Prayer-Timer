@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Text, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useThemeContext } from '../context/ThemeContext';
@@ -9,7 +9,6 @@ import { HeroCard, Prayer } from '../components/HeroCard';
 import { DateDisplay } from '../components/DateDisplay';
 import { PrayerTimesGrid } from '../components/PrayerTimesGrid';
 import { HomeHeader } from '../components/HomeHeader';
-import { sendTestNotification, debugScheduledNotifications } from '../utils/notifications';
 
 const HomeScreen = ({ navigation }: any) => {
   const { location, prayerTimes } = useApp();
@@ -23,26 +22,6 @@ const HomeScreen = ({ navigation }: any) => {
 
   const handleOpenSettings = () => {
     navigation.getParent()?.navigate('Settings');
-  };
-
-  const handleTestNotification = async () => {
-    const result = await sendTestNotification(5);
-    if (result) {
-      Alert.alert(
-        '🧪 Test Notification Scheduled',
-        'Prayer notification with Adhan sound will appear in 5 seconds!\n\nClose the app to test if Adhan plays when app is closed.',
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
-  const handleDebugNotifications = async () => {
-    const scheduled = await debugScheduledNotifications();
-    Alert.alert(
-      '📋 Scheduled Notifications',
-      `You have ${scheduled.length} notifications scheduled. Check console for details.`,
-      [{ text: 'OK' }]
-    );
   };
 
   useEffect(() => {
@@ -127,25 +106,6 @@ const HomeScreen = ({ navigation }: any) => {
             nextPrayer={nextPrayer}
             isDarkMode={isDarkMode}
           />
-
-          {/* Test Notification Buttons - DEV ONLY */}
-          <View style={styles.testButtonsContainer}>
-            <TouchableOpacity
-              onPress={handleTestNotification}
-              style={[styles.testButton, styles.testButtonPrimary]}
-            >
-              <Text style={styles.testButtonText}>🧪 Test Notifications (5s)</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleDebugNotifications}
-              style={[styles.testButton, styles.testButtonSecondary]}
-            >
-              <Text style={[styles.testButtonText, styles.testButtonTextSecondary]}>
-                📋 Show Scheduled
-              </Text>
-            </TouchableOpacity>
-          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -174,33 +134,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: SPACING.m,
     paddingBottom: 100, // Extra padding for bottom navigation
-  },
-  testButtonsContainer: {
-    marginTop: 20,
-    gap: 10,
-  },
-  testButton: {
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  testButtonPrimary: {
-    backgroundColor: '#10B981',
-  },
-  testButtonSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#10B981',
-  },
-  testButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  testButtonTextSecondary: {
-    color: '#10B981',
   },
 });
 

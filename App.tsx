@@ -1,31 +1,43 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AppProvider } from './src/context/AppContext';
-import { ensureNotificationsScheduled } from './src/utils/notifications';
+import { ensureNotificationsScheduled, updateForegroundTime } from './src/utils/notifications';
 
 export default function App() {
-  const notificationListener = useRef<any>();
-  const responseListener = useRef<any>();
+  const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
+  const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    // Listen for notifications received while app is foregrounded
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      const { type } = notification.request.content.data || {};
-
-      if (type === 'midnight-reschedule') {
-        // Trigger reschedule to ensure tomorrow's prayers are scheduled
-        ensureNotificationsScheduled();
-      }
-    });
-
     // Listen for user tapping on notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(() => {
       // Handle notification tap silently
       // You can navigate to a specific screen here if needed
     });
+
+    // Listen for app state changes (foreground/background)
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App has come to the foreground
+        console.log('📱 App came to foreground - checking notification health...');
+        updateForegroundTime(); // Update foreground time for notification handler
+
+        // Fallback check: Ensure we have 2 notifications scheduled
+        setTimeout(() => {
+          ensureNotificationsScheduled();
+        }, 1000); // Small delay to let app fully initialize
+      }
+      appState.current = nextAppState;
+    });
+
+    // Initial check when app first loads
+    setTimeout(() => {
+      ensureNotificationsScheduled();
+    }, 2000);
 
     // Cleanup listeners on unmount
     return () => {
@@ -35,6 +47,7 @@ export default function App() {
       if (responseListener.current) {
         responseListener.current.remove();
       }
+      subscription.remove();
     };
   }, []);
 

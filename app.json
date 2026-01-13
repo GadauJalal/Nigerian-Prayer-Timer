@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "app",
+    "name": "Prayer Times Nigeria",
     "slug": "app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,20 +8,13 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/prayertimeslogo.jpeg",
+      "image": "./assets/Prayerlogo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.app",
-      "infoPlist": {
-        "UIBackgroundModes": [
-          "remote-notification",
-          "fetch",
-          "processing"
-        ]
-      }
+      "bundleIdentifier": "com.prayertimesnigeria.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,16 +23,13 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.yourcompany.app",
+      "package": "com.prayertimesnigeria.app",
       "permissions": [
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM",
         "USE_EXACT_ALARM",
-        "POST_NOTIFICATIONS",
-        "WAKE_LOCK",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE"
+        "POST_NOTIFICATIONS"
       ],
       "useNextNotificationsApi": true
     },
@@ -57,14 +47,22 @@
           "icon": "./assets/prayertimeslogo.jpeg",
           "color": "#10B981",
           "sounds": [
-            "./assets/adhan.mp3"
+            "./assets/adhan1.mp3",
+            "./assets/adhan2.mp3",
+            "./assets/adhan3.mp3"
           ],
           "mode": "production"
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7eb17e2d-a628-4c72-b4a2-41b14f528321"
+      }
     }
   }
 }

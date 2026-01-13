@@ -33,40 +33,59 @@ export default function QiblaScreen() {
   const { isDarkMode } = useThemeContext();
   const { location } = useApp();
   const [heading, setHeading] = useState(0);
-  const [qiblaDirection, setQiblaDirection] = useState(293);
   const [isPhoneFlat, setIsPhoneFlat] = useState(true);
+  const [isSensorAvailable, setIsSensorAvailable] = useState<boolean | null>(null);
 
   // Calculate Qibla direction based on user's location
-  useEffect(() => {
-    if (location) {
-      const qibla = calculateQiblaDirection(location.lat, location.lng);
-      setQiblaDirection(Math.round(qibla));
-    }
-  }, [location]);
+  // Initialize with calculated value if location is available, otherwise use 0
+  const qiblaDirection = location
+    ? Math.round(calculateQiblaDirection(location.lat, location.lng))
+    : 0;
 
   // Subscribe to magnetometer for compass heading
   useEffect(() => {
-    // Set update interval
-    Magnetometer.setUpdateInterval(100);
+    let subscription: any = null;
 
-    const subscription = Magnetometer.addListener((data) => {
-      // Calculate heading from magnetometer data
-      let angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
+    const setupMagnetometer = async () => {
+      try {
+        // Check if magnetometer is available
+        const available = await Magnetometer.isAvailableAsync();
+        setIsSensorAvailable(available);
 
-      // Normalize to 0-360
-      angle = (angle + 360) % 360;
+        if (!available) {
+          return;
+        }
 
-      // Platform-specific adjustments
-      if (Platform.OS === 'android') {
-        // Android typically needs a 90-degree offset
-        angle = (angle + 90) % 360;
+        // Set update interval
+        Magnetometer.setUpdateInterval(100);
+
+        subscription = Magnetometer.addListener((data) => {
+          // Calculate heading from magnetometer data
+          let angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
+
+          // Normalize to 0-360
+          angle = (angle + 360) % 360;
+
+          // Platform-specific adjustments
+          if (Platform.OS === 'android') {
+            // Android typically needs a 90-degree offset
+            angle = (angle + 90) % 360;
+          }
+
+          setHeading(Math.round(angle));
+        });
+      } catch (error) {
+        console.error('Error setting up magnetometer:', error);
+        setIsSensorAvailable(false);
       }
+    };
 
-      setHeading(Math.round(angle));
-    });
+    setupMagnetometer();
 
     return () => {
-      subscription.remove();
+      if (subscription) {
+        subscription.remove();
+      }
     };
   }, []);
 
@@ -160,8 +179,40 @@ export default function QiblaScreen() {
             </View>
           </View>
 
+          {/* Sensor unavailable message */}
+          {isSensorAvailable === false && (
+            <View
+              style={[
+                styles.sensorErrorCard,
+                isDarkMode ? styles.sensorErrorCardDark : styles.sensorErrorCardLight,
+              ]}
+            >
+              <Smartphone
+                size={48}
+                color={isDarkMode ? '#94A3B8' : '#64748B'}
+                strokeWidth={1.5}
+              />
+              <Text
+                style={[
+                  styles.sensorErrorTitle,
+                  isDarkMode ? styles.sensorErrorTitleDark : styles.sensorErrorTitleLight,
+                ]}
+              >
+                Compass Not Available
+              </Text>
+              <Text
+                style={[
+                  styles.sensorErrorMessage,
+                  isDarkMode ? styles.sensorErrorMessageDark : styles.sensorErrorMessageLight,
+                ]}
+              >
+                Your device does not have a gyroscope or magnetometer sensor, which is required for compass functionality. Please use a different device to access the Qibla compass feature.
+              </Text>
+            </View>
+          )}
+
           {/* Device orientation warning */}
-          {!isPhoneFlat && (
+          {isSensorAvailable && !isPhoneFlat && (
             <View
               style={[
                 styles.warningBanner,
@@ -184,37 +235,41 @@ export default function QiblaScreen() {
           )}
 
           {/* Compass */}
-          <View style={styles.compassWrapper}>
-            <QiblaCompass
-              heading={heading}
-              qiblaDirection={qiblaDirection}
-              isDarkMode={isDarkMode}
-            />
-          </View>
+          {isSensorAvailable && (
+            <>
+              <View style={styles.compassWrapper}>
+                <QiblaCompass
+                  heading={heading}
+                  qiblaDirection={qiblaDirection}
+                  isDarkMode={isDarkMode}
+                />
+              </View>
 
-          {/* Location info */}
-          <View style={styles.locationWrapper}>
-            <View
-              style={[
-                styles.locationPill,
-                isDarkMode
-                  ? styles.locationPillDark
-                  : styles.locationPillLight,
-              ]}
-            >
-              <View style={styles.locationDot} />
-              <Text
-                style={[
-                  styles.locationText,
-                  isDarkMode
-                    ? styles.locationTextDark
-                    : styles.locationTextLight,
-                ]}
-              >
-                {location?.name || 'Abuja, Nigeria'}
-              </Text>
-            </View>
-          </View>
+              {/* Location info */}
+              <View style={styles.locationWrapper}>
+                <View
+                  style={[
+                    styles.locationPill,
+                    isDarkMode
+                      ? styles.locationPillDark
+                      : styles.locationPillLight,
+                  ]}
+                >
+                  <View style={styles.locationDot} />
+                  <Text
+                    style={[
+                      styles.locationText,
+                      isDarkMode
+                        ? styles.locationTextDark
+                        : styles.locationTextLight,
+                    ]}
+                  >
+                    {location?.name || 'Abuja, Nigeria'}
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -331,6 +386,50 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   directionHintDark: {
+    color: '#94A3B8',
+  },
+  sensorErrorCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  sensorErrorCardLight: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+  },
+  sensorErrorCardDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+  },
+  sensorErrorTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  sensorErrorTitleLight: {
+    color: '#0F172A',
+  },
+  sensorErrorTitleDark: {
+    color: '#F9FAFB',
+  },
+  sensorErrorMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  sensorErrorMessageLight: {
+    color: '#64748B',
+  },
+  sensorErrorMessageDark: {
     color: '#94A3B8',
   },
   warningBanner: {

@@ -54,7 +54,7 @@ export function BottomNavigation({
     <View style={[
       styles.container,
       {
-        paddingBottom: Platform.OS === 'android' ? 24 : (insets.bottom + 24),
+        paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 24,
       }
     ]}>
       {/* Liquid Glass Dock Container */}
@@ -122,8 +122,8 @@ export function BottomNavigation({
                         isActive
                           ? '#FFFFFF'
                           : isDarkMode
-                          ? '#94A3B8' // slate-400
-                          : '#64748B' // slate-500
+                            ? '#94A3B8' // slate-400
+                            : '#64748B' // slate-500
                       }
                       strokeWidth={isActive ? 2.5 : 2}
                     />

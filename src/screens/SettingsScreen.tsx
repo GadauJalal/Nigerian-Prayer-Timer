@@ -15,8 +15,6 @@ import {
   MapPin,
   Bell,
   Palette,
-  Calendar,
-  Compass,
   Info,
   ChevronRight,
   Sun,
@@ -30,24 +28,25 @@ import {
 } from 'lucide-react-native';
 import { useThemeContext } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
+import { Audio } from 'expo-av';
 import { NIGERIA_LOCATIONS, City } from '../data/nigeria_locations';
 import { getCurrentLocation, findNearestCity } from '../utils/location';
+import { updateNotificationChannelSound } from '../utils/notifications';
 
-type ExpandedSection = 'location' | 'notifications' | 'theme' | 'calendar' | 'qibla' | 'about' | null;
+type ExpandedSection = 'location' | 'notifications' | 'theme' | 'about' | null;
 
-// Reciter options
-const RECITERS = [
-  { id: 'mishary', name: 'Mishary Rashid Alafasy' },
-  { id: 'abdul-basit', name: 'Abdul Basit Abdul Samad' },
-  { id: 'sudais', name: 'Abdul Rahman Al-Sudais' },
-  { id: 'menshawi', name: 'Mohamed Siddiq Al-Minshawi' },
-  { id: 'ghamdi', name: 'Saad Al-Ghamdi' },
+// Adhan sound options
+const ADHAN_SOUNDS = [
+  { id: 'adhan1', name: 'Adhan 1 (Default)', file: require('../../assets/adhan1.mp3') },
+  { id: 'adhan2', name: 'Adhan 2', file: require('../../assets/adhan2.mp3') },
+  { id: 'adhan3', name: 'Adhan 3', file: require('../../assets/adhan3.mp3') },
 ];
 
 export default function SettingsScreen({ navigation }: any) {
-  const { isDarkMode, toggleDarkMode } = useThemeContext();
-  const { location, setLocation } = useApp();
+  const { isDarkMode, themeMode, setThemeMode } = useThemeContext();
+  const { location, setLocation, selectedAdhan, setSelectedAdhan } = useApp();
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
 
   // Location settings
   const [expandedState, setExpandedState] = useState<string | null>(null);
@@ -75,21 +74,40 @@ export default function SettingsScreen({ navigation }: any) {
   const [asrNotif, setAsrNotif] = useState(true);
   const [maghribNotif, setMaghribNotif] = useState(true);
   const [ishaNotif, setIshaNotif] = useState(true);
-  const [selectedReciter, setSelectedReciter] = useState<string>('mishary');
-
-  // Theme settings
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('system');
-
-  // Calendar settings
-  const [timeFormat, setTimeFormat] = useState<'12' | '24'>('12');
-  const [exportFormat, setExportFormat] = useState<'pdf' | 'jpeg'>('pdf');
-
-  // Qibla settings
-  const [hapticFeedback, setHapticFeedback] = useState(true);
 
   const toggleSection = (section: ExpandedSection) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
+
+  const playAdhanPreview = async (adhanId: string) => {
+    try {
+      // Stop and unload any currently playing sound
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
+      }
+
+      const adhanFile = ADHAN_SOUNDS.find(a => a.id === adhanId);
+      if (adhanFile) {
+        const { sound: newSound } = await Audio.Sound.createAsync(adhanFile.file);
+        setSound(newSound);
+        await newSound.playAsync();
+      }
+    } catch (error) {
+      console.error('Error playing adhan preview:', error);
+      Alert.alert('Error', 'Failed to play adhan preview');
+    }
+  };
+
+  // Cleanup sound on unmount
+  React.useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
 
   const handleResetSettings = () => {
     Alert.alert(
@@ -107,11 +125,8 @@ export default function SettingsScreen({ navigation }: any) {
             setAsrNotif(true);
             setMaghribNotif(true);
             setIshaNotif(true);
-            setSelectedReciter('mishary');
+            setSelectedAdhan('adhan1');
             setThemeMode('system');
-            setTimeFormat('12');
-            setExportFormat('pdf');
-            setHapticFeedback(true);
             Alert.alert('Success', 'All settings have been reset to default values.');
           },
         },
@@ -124,9 +139,9 @@ export default function SettingsScreen({ navigation }: any) {
     Alert.alert('GPS Location', 'Detecting your location using GPS...');
 
     try {
-      const coords = await getCurrentLocation();
-      if (coords) {
-        const nearestCity = findNearestCity(coords.latitude, coords.longitude);
+      const location = await getCurrentLocation();
+      if (location && location.coords) {
+        const nearestCity = findNearestCity(location.coords.latitude, location.coords.longitude);
         if (nearestCity) {
           setLocation(nearestCity);
           Alert.alert('Location Updated', `Location set to ${nearestCity.name}`);
@@ -308,30 +323,49 @@ export default function SettingsScreen({ navigation }: any) {
                   ))}
 
                   <Text style={[styles.sectionLabel, styles.sectionLabelSpaced, isDarkMode && styles.sectionLabelDark]}>
-                    Adhan Reciter
+                    Adhan Sound
                   </Text>
-                  {RECITERS.map((reciter) => (
+                  {ADHAN_SOUNDS.map((adhan) => (
                     <TouchableOpacity
-                      key={reciter.id}
-                      onPress={() => setSelectedReciter(reciter.id)}
+                      key={adhan.id}
+                      onPress={async () => {
+                        // Update context (for UI)
+                        setSelectedAdhan(adhan.id);
+
+                        // Play preview
+                        playAdhanPreview(adhan.id);
+
+                        // Update notification channel and reschedule notifications
+                        try {
+                          const success = await updateNotificationChannelSound(adhan.id);
+                          if (success) {
+                            console.log(`✅ Successfully updated to ${adhan.name}`);
+                          } else {
+                            console.log(`⚠️ Failed to update notification sound`);
+                          }
+                        } catch (error) {
+                          console.error('Error updating notification sound:', error);
+                        }
+                      }}
                       style={[
                         styles.reciterItem,
                         isDarkMode ? styles.reciterItemDark : styles.reciterItemLight,
-                        selectedReciter === reciter.id && styles.reciterItemSelected,
+                        selectedAdhan === adhan.id && styles.reciterItemSelected,
                       ]}
                     >
-                      <Volume2 size={16} color={selectedReciter === reciter.id ? '#059669' : '#94A3B8'} />
+                      <Volume2 size={16} color={selectedAdhan === adhan.id ? '#059669' : '#94A3B8'} />
                       <Text
                         style={[
                           styles.reciterText,
                           isDarkMode && styles.reciterTextDark,
-                          selectedReciter === reciter.id && styles.reciterTextSelected,
+                          selectedAdhan === adhan.id && styles.reciterTextSelected,
                         ]}
                       >
-                        {reciter.name}
+                        {adhan.name}
                       </Text>
                     </TouchableOpacity>
                   ))}
+
                 </>
               )}
             </View>
@@ -376,107 +410,6 @@ export default function SettingsScreen({ navigation }: any) {
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
-          </SettingCard>
-
-          {/* Calendar & Exports */}
-          <SettingCard
-            icon={Calendar}
-            title="Calendar & Exports"
-            subtitle={`${timeFormat}h format`}
-            isExpanded={expandedSection === 'calendar'}
-            onToggle={() => toggleSection('calendar')}
-            isDarkMode={isDarkMode}
-          >
-            <View style={styles.settingContent}>
-              <Text style={[styles.sectionLabel, isDarkMode && styles.sectionLabelDark]}>
-                Time Format
-              </Text>
-              <View style={styles.formatRow}>
-                {[
-                  { format: '12' as const, label: '12 Hour' },
-                  { format: '24' as const, label: '24 Hour' },
-                ].map(({ format, label }) => (
-                  <TouchableOpacity
-                    key={format}
-                    onPress={() => setTimeFormat(format)}
-                    style={[
-                      styles.formatButton,
-                      isDarkMode ? styles.formatButtonDark : styles.formatButtonLight,
-                      timeFormat === format && styles.formatButtonSelected,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.formatButtonText,
-                        isDarkMode && styles.formatButtonTextDark,
-                        timeFormat === format && styles.formatButtonTextSelected,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={[styles.sectionLabel, styles.sectionLabelSpaced, isDarkMode && styles.sectionLabelDark]}>
-                Export Format
-              </Text>
-              <View style={styles.formatRow}>
-                {[
-                  { format: 'pdf' as const, label: 'PDF' },
-                  { format: 'jpeg' as const, label: 'JPEG' },
-                ].map(({ format, label }) => (
-                  <TouchableOpacity
-                    key={format}
-                    onPress={() => setExportFormat(format)}
-                    style={[
-                      styles.formatButton,
-                      isDarkMode ? styles.formatButtonDark : styles.formatButtonLight,
-                      exportFormat === format && styles.formatButtonSelected,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.formatButtonText,
-                        isDarkMode && styles.formatButtonTextDark,
-                        exportFormat === format && styles.formatButtonTextSelected,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </SettingCard>
-
-          {/* Qibla & Compass */}
-          <SettingCard
-            icon={Compass}
-            title="Qibla & Compass"
-            subtitle={hapticFeedback ? 'Haptic feedback on' : 'Haptic feedback off'}
-            isExpanded={expandedSection === 'qibla'}
-            onToggle={() => toggleSection('qibla')}
-            isDarkMode={isDarkMode}
-          >
-            <View style={styles.settingContent}>
-              <View style={styles.toggleRow}>
-                <View style={styles.toggleLabelContainer}>
-                  <Text style={[styles.toggleLabel, isDarkMode && styles.toggleLabelDark]}>
-                    Haptic Feedback
-                  </Text>
-                  <Text style={[styles.toggleHint, isDarkMode && styles.toggleHintDark]}>
-                    Vibrate when pointing to Qibla
-                  </Text>
-                </View>
-                <Switch
-                  value={hapticFeedback}
-                  onValueChange={setHapticFeedback}
-                  trackColor={{ false: '#CBD5E1', true: '#059669' }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
             </View>
           </SettingCard>
 
