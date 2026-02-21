@@ -120,15 +120,7 @@ export function HeroCard({ nextPrayer, currentTime, isDarkMode }: HeroCardProps)
         </View>
 
         {/* Gradient transition */}
-        <LinearGradient
-          colors={
-            isDarkMode
-              ? ['transparent', 'rgba(30, 41, 59, 1)']
-              : ['transparent', 'rgba(255, 255, 255, 1)']
-          }
-          style={styles.gradientTransition}
-          pointerEvents="none"
-        />
+
       </View>
 
       {/* Bottom Half: Next Prayer Information */}

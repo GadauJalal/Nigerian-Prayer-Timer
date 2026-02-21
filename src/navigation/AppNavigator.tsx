@@ -2,7 +2,6 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
@@ -13,7 +12,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import { BottomNavigation } from '../components/BottomNavigation';
 import { COLORS } from '../constants/theme';
-import { ThemeProvider, useThemeContext } from '../context/ThemeContext';
+import { useThemeContext } from '../context/ThemeContext';
 import { useAppContext } from '../context/AppContext';
 
 const Tab = createBottomTabNavigator();
@@ -78,7 +77,7 @@ function RootNavigator() {
     );
 }
 
-function AppContent() {
+export default function AppNavigator() {
     const { hasCompletedOnboarding, loading } = useAppContext();
     const { isDarkMode } = useThemeContext();
 
@@ -94,17 +93,9 @@ function AppContent() {
         return <OnboardingScreen />;
     }
 
-    return <RootNavigator />;
-}
-
-export default function AppNavigator() {
     return (
-        <SafeAreaProvider>
-            <ThemeProvider>
-                <NavigationContainer>
-                    <AppContent />
-                </NavigationContainer>
-            </ThemeProvider>
-        </SafeAreaProvider>
+        <NavigationContainer>
+            <RootNavigator />
+        </NavigationContainer>
     );
 }

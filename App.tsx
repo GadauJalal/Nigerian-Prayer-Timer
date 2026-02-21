@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AppProvider } from './src/context/AppContext';
+import { ThemeProvider } from './src/context/ThemeContext';
 import { ensureNotificationsScheduled, updateForegroundTime, scheduleReengagementNotification } from './src/utils/notifications';
 
 export default function App() {
@@ -56,8 +57,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <StatusBar style="auto" />
-        <AppNavigator />
+        <ThemeProvider>
+          <StatusBar style="auto" />
+          <AppNavigator />
+        </ThemeProvider>
       </AppProvider>
     </SafeAreaProvider>
   );
