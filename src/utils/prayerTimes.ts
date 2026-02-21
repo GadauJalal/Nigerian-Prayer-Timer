@@ -63,7 +63,7 @@ export const getNextPrayer = (prayerTimes: PrayerTimeResult): { name: string; ti
     const times = [
         { name: 'Fajr', time: prayerTimes.fajr },
         { name: 'Sunrise', time: prayerTimes.sunrise },
-        { name: 'Zuhr', time: prayerTimes.zuhr },
+        { name: 'Dhuhr', time: prayerTimes.zuhr },
         { name: 'Asr', time: prayerTimes.asr },
         { name: 'Maghrib', time: prayerTimes.maghrib },
         { name: 'Isha', time: prayerTimes.isha },

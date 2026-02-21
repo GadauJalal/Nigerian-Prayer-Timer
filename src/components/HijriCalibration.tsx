@@ -54,7 +54,7 @@ export function HijriCalibration({ isDarkMode }: HijriCalibrationProps) {
             <View style={styles.headerRow}>
                 <View style={styles.headerLeft}>
                     <View style={[styles.indicator, isDarkMode ? styles.indicatorDark : styles.indicatorLight]} />
-                    <View>
+                    <View style={styles.titleContainer}>
                         <Text style={[styles.title, isDarkMode && styles.titleDark]}>
                             Hijri Calibration
                         </Text>
@@ -199,6 +199,9 @@ const styles = StyleSheet.create({
         gap: 12,
         flex: 1,
     },
+    titleContainer: {
+        flex: 1,
+    },
     indicator: {
         width: 10,
         height: 10,
@@ -228,21 +231,23 @@ const styles = StyleSheet.create({
     },
     headerRight: {
         alignItems: 'flex-end',
+        marginLeft: 8,
     },
     todayLabel: {
         fontSize: 9,
         fontWeight: '600',
         letterSpacing: 0.5,
         color: '#64748B',
-        marginBottom: 2,
+        marginBottom: 4,
     },
     todayLabelDark: {
         color: '#94A3B8',
     },
     todayDate: {
         fontSize: 13,
-        fontWeight: '600',
+        fontWeight: '700',
         color: '#047857',
+        textAlign: 'right',
     },
     todayDateDark: {
         color: '#34D399',
@@ -359,11 +364,14 @@ const styles = StyleSheet.create({
         backgroundColor: '#059669',
         borderRadius: 12,
         paddingVertical: 14,
+        paddingHorizontal: 20,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     verifyButtonText: {
         color: '#FFFFFF',
         fontSize: 14,
         fontWeight: '600',
+        textAlign: 'center',
     },
 });
