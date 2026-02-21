@@ -14,7 +14,7 @@ export const getCurrentLocation = async () => {
     return await Location.getCurrentPositionAsync({});
 };
 
-// Haversine formula to calculate distance between two points
+// Haversine formul to calculate distance between two points
 const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // Radius of the earth in km
     const dLat = deg2rad(lat2 - lat1);
