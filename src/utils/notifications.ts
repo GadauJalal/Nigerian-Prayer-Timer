@@ -319,6 +319,47 @@ const getNext2Prayers = async (): Promise<Array<{ name: string; time: Date; date
 };
 
 /**
+ * Schedule a re-engagement notification for 14 days from now.
+ * Each time the app opens, this resets the timer. If the user doesn't
+ * open the app for 2 weeks, they get a reminder to open it so prayer
+ * notifications keep working.
+ */
+export const scheduleReengagementNotification = async () => {
+    try {
+        // Cancel any existing re-engagement notification
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        for (const notif of scheduled) {
+            if (notif.content.data?.type === 'reengagement') {
+                await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+            }
+        }
+
+        // Schedule new one for 14 days from now
+        const triggerDate = new Date();
+        triggerDate.setDate(triggerDate.getDate() + 14);
+
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                title: 'Prayer Times Nigeria',
+                body: 'Open the app to keep receiving prayer time notifications',
+                sound: 'default',
+                ...getPriorityConfig(),
+                data: { type: 'reengagement' },
+            },
+            trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+                ...getChannelConfig(),
+            },
+        });
+
+        console.log(`✅ Re-engagement notification scheduled for ${triggerDate.toLocaleDateString()}`);
+    } catch (error) {
+        await logError('scheduleReengagementNotification', error);
+    }
+};
+
+/**
  * Schedule the next 2 upcoming prayer notifications
  * This is the core function of the simplified notification system
  */
@@ -327,9 +368,14 @@ export const scheduleNext2Prayers = async (): Promise<boolean> => {
         console.log('\n🔔 ===== SCHEDULING NEXT 2 PRAYERS =====');
         console.log(`🕐 Current time: ${new Date().toLocaleString()}`);
 
-        // Cancel all existing notifications
-        await Notifications.cancelAllScheduledNotificationsAsync();
-        console.log('🗑️  Cleared all existing notifications');
+        // Cancel only prayer notifications (preserve re-engagement notification)
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        for (const notif of scheduled) {
+            if (notif.content.data?.type !== 'reengagement') {
+                await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+            }
+        }
+        console.log('🗑️  Cleared prayer notifications');
 
         // Get next 2 prayers
         const prayers = await getNext2Prayers();
@@ -451,8 +497,9 @@ export const ensureNotificationsScheduled = async () => {
         const scheduled = await Notifications.getAllScheduledNotificationsAsync();
         const now = new Date();
 
-        // Filter for future notifications only
+        // Filter for future prayer notifications only (exclude re-engagement)
         const futureNotifications = scheduled.filter(notif => {
+            if (notif.content.data?.type === 'reengagement') return false;
             const trigger = notif.trigger as any;
             if (trigger.value) {
                 const triggerDate = new Date(trigger.value);

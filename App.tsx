@@ -5,7 +5,7 @@ import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AppProvider } from './src/context/AppContext';
-import { ensureNotificationsScheduled, updateForegroundTime } from './src/utils/notifications';
+import { ensureNotificationsScheduled, updateForegroundTime, scheduleReengagementNotification } from './src/utils/notifications';
 
 export default function App() {
   const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
@@ -29,6 +29,7 @@ export default function App() {
         // Fallback check: Ensure we have 2 notifications scheduled
         setTimeout(() => {
           ensureNotificationsScheduled();
+          scheduleReengagementNotification(); // Reset 2-week reminder
         }, 1000); // Small delay to let app fully initialize
       }
       appState.current = nextAppState;
@@ -37,6 +38,7 @@ export default function App() {
     // Initial check when app first loads
     setTimeout(() => {
       ensureNotificationsScheduled();
+      scheduleReengagementNotification(); // Reset 2-week reminder
     }, 2000);
 
     // Cleanup listeners on unmount

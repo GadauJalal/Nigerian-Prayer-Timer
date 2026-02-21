@@ -28,6 +28,8 @@ interface AppContextType {
     completeOnboarding: () => void;
     selectedAdhan: string;
     setSelectedAdhan: (adhan: string) => void;
+    hijriAdjustment: number;
+    setHijriAdjustment: (adj: number) => void;
 }
 
 const defaultAdjustments: Adjustments = {
@@ -49,6 +51,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [loading, setLoading] = useState(true);
     const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
     const [selectedAdhan, setSelectedAdhanState] = useState<string>('adhan1');
+    const [hijriAdjustment, setHijriAdjustmentState] = useState<number>(0);
 
     // Use ref to track last scheduled config to prevent duplicate scheduling
     const lastScheduledConfig = useRef<string>('');
@@ -122,6 +125,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (savedAdhan) {
                 setSelectedAdhanState(savedAdhan);
             }
+
+            const savedHijriAdj = await AsyncStorage.getItem('hijriAdjustment');
+            if (savedHijriAdj) {
+                setHijriAdjustmentState(parseInt(savedHijriAdj, 10) || 0);
+            }
         } catch (e) {
             console.error('Failed to load settings', e);
         } finally {
@@ -160,6 +168,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await initializeNotificationChannel();
     };
 
+    const setHijriAdjustment = async (adj: number) => {
+        const clamped = Math.max(-3, Math.min(3, adj));
+        setHijriAdjustmentState(clamped);
+        await AsyncStorage.setItem('hijriAdjustment', clamped.toString());
+    };
+
     const refreshPrayerTimes = () => {
         if (location) {
             const times = calculatePrayerTimes(location.lat, location.lng, new Date(), adjustments);
@@ -177,7 +191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     return (
-        <AppContext.Provider value={{ location, setLocation, prayerTimes, loading, refreshPrayerTimes, adjustments, setAdjustments, theme, toggleTheme, hasCompletedOnboarding, completeOnboarding, selectedAdhan, setSelectedAdhan }}>
+        <AppContext.Provider value={{ location, setLocation, prayerTimes, loading, refreshPrayerTimes, adjustments, setAdjustments, theme, toggleTheme, hasCompletedOnboarding, completeOnboarding, selectedAdhan, setSelectedAdhan, hijriAdjustment, setHijriAdjustment }}>
             {children}
         </AppContext.Provider>
     );

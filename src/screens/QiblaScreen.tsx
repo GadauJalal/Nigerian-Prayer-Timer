@@ -8,21 +8,24 @@ import { QiblaCompass } from '../components/QiblaCompass';
 import { Smartphone } from 'lucide-react-native';
 
 // Helper function to calculate Qibla direction from user's location
+// Helper function to calculate Qibla direction from user's location
 function calculateQiblaDirection(userLat: number, userLng: number): number {
-  // Kaaba coordinates
-  const kaabaLat = 21.4225;
-  const kaabaLng = 39.8262;
+  // Kaaba coordinates (Precise)
+  const kaabaLat = 21.422487;
+  const kaabaLng = 39.826206;
 
   // Convert to radians
-  const lat1 = (userLat * Math.PI) / 180;
-  const lat2 = (kaabaLat * Math.PI) / 180;
-  const dLng = ((kaabaLng - userLng) * Math.PI) / 180;
+  const phi1 = (userLat * Math.PI) / 180;
+  const lamb1 = (userLng * Math.PI) / 180;
+  const phi2 = (kaabaLat * Math.PI) / 180;
+  const lamb2 = (kaabaLng * Math.PI) / 180;
 
-  // Calculate bearing
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  const deltaLambda = lamb2 - lamb1;
+
+  // Formula: θ = atan2(sin(Δλ), cos(φ₁)*tan(φ₂) - sin(φ₁)*cos(Δλ))
+  const y = Math.sin(deltaLambda);
+  const x = Math.cos(phi1) * Math.tan(phi2) - Math.sin(phi1) * Math.cos(deltaLambda);
+
   const bearing = (Math.atan2(y, x) * 180) / Math.PI;
 
   // Normalize to 0-360

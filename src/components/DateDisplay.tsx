@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Calendar } from 'lucide-react-native';
-import hijri from 'hijri';
+import { useApp } from '../context/AppContext';
+import { getHijriDate } from '../utils/date';
 
 interface DateDisplayProps {
   isDarkMode: boolean;
@@ -22,14 +23,9 @@ export function DateDisplay({ isDarkMode }: DateDisplayProps) {
     year: 'numeric',
   });
 
-  // Calculate actual Hijri date for today
-  const hijriResult = hijri.convert(today);
-  const hijriMonths = [
-    'Muharram', 'Safar', 'Rabi\' Al-Awwal', 'Rabi\' Al-Thani',
-    'Jumada Al-Awwal', 'Jumada Al-Thani', 'Rajab', 'Sha\'ban',
-    'Ramadan', 'Shawwal', 'Dhu Al-Qi\'dah', 'Dhu Al-Hijjah'
-  ];
-  const hijriDate = `${hijriResult.dayOfMonth} ${hijriMonths[hijriResult.month - 1]} ${hijriResult.year}`;
+  // Calculate actual Hijri date for today with calibration offset
+  const { location, hijriAdjustment } = useApp();
+  const hijriDate = getHijriDate(today, location?.lat, location?.lng, hijriAdjustment);
 
   return (
     <View

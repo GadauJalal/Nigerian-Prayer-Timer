@@ -169,9 +169,6 @@ export default function SettingsScreen({ navigation }: any) {
 
   return (
     <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      {/* Ambient glow */}
-      <View style={[styles.ambientGlow, isDarkMode && styles.ambientGlowDark]} />
-
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={[styles.header, isDarkMode && styles.headerDark]}>

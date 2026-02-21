@@ -32,18 +32,28 @@ const HomeScreen = ({ navigation }: any) => {
   }, []);
 
   useEffect(() => {
-    if (prayerTimes) {
+    if (!prayerTimes) return;
+
+    const updateNextPrayer = () => {
       const next = getNextPrayer(prayerTimes);
-      // If remaining is negative, all prayers for today are completed
       if (next && next.remaining < 0) {
-        setNextPrayer(null);
+        setNextPrayer(prev => (prev === null ? prev : null));
       } else if (next) {
-        setNextPrayer({ name: next.name, time: next.time });
+        setNextPrayer(prev => {
+          if (prev && prev.name === next.name && prev.time.getTime() === next.time.getTime()) {
+            return prev;
+          }
+          return { name: next.name, time: next.time };
+        });
       } else {
-        setNextPrayer(null);
+        setNextPrayer(prev => (prev === null ? prev : null));
       }
-    }
-  }, [prayerTimes, currentTime]);
+    };
+
+    updateNextPrayer();
+    const timer = setInterval(updateNextPrayer, 30000);
+    return () => clearInterval(timer);
+  }, [prayerTimes]);
 
   if (!location || !prayerTimes) {
     return (

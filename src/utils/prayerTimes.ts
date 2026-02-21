@@ -19,13 +19,14 @@ export const calculatePrayerTimes = (
 
     // Custom Nigerian Calculation Method
     // Fajr: 18 degrees
-    // Isha: Fixed interval of 65 minutes after Maghrib (approx, usually handled via adjustments or custom params)
-    // But adhan library allows setting custom params.
+    // Isha: Fixed interval of 1 hour 5 minutes after Maghrib
+    // Note: Using 66 minutes to compensate for rounding when displaying times
+    // Using adhan library custom params
 
     const params = CalculationMethod.MuslimWorldLeague(); // Start with a base
     params.fajrAngle = 18;
-    params.ishaAngle = 0; // Set to 0 to use interval if possible, or we manually adjust
-    params.ishaInterval = 65; // Maghrib + 65 minutes
+    params.ishaAngle = 0; // Set to 0 to use interval instead of angle
+    params.ishaInterval = 66; // Maghrib + 66 minutes (compensates for rounding to show 1hr 5min)
     params.madhab = Madhab.Shafi; // Asr 1x shadow
     params.highLatitudeRule = HighLatitudeRule.MiddleOfTheNight;
 
@@ -36,7 +37,7 @@ export const calculatePrayerTimes = (
     // Apply user manual offsets
     params.adjustments.fajr += offsets.fajr || 0;
     params.adjustments.sunrise += offsets.sunrise || 0;
-    params.adjustments.zuhr += offsets.zuhr || 0;
+    params.adjustments.dhuhr += offsets.zuhr || 0; // Note: adhan uses 'dhuhr' but we accept 'zuhr' in offsets
     params.adjustments.asr += offsets.asr || 0;
     params.adjustments.maghrib += offsets.maghrib || 0;
     params.adjustments.isha += offsets.isha || 0;

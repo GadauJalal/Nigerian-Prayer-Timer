@@ -680,8 +680,10 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Paikoro", "lat": 9.8469, "lng": 6.1235 },
             { name: "Rafi", "lat": 10.1333, "lng": 5.6667 },
             { name: "Rijau", "lat": 10.5367, "lng": 5.0667 },
-            { name: "Epe", lat: 6.5841, lng: 3.9754 },
-            { name: "Ikorodu", lat: 6.6191, lng: 3.5105 },
+            { name: "Shiroro", lat: 9.95694444, lng: 6.83194444 },
+            { name: "Suleja", lat: 9.25, lng: 7.25 },
+            { name: "Tafa", lat: 9.18333333, lng: 7.18333333 },
+            { name: "Wushishi", lat: 9.721763, lng: 6.111317 },
         ],
     },
     {

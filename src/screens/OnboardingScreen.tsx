@@ -30,19 +30,19 @@ const slides: OnboardingSlide[] = [
     id: '1',
     title: "Nigeria's first prayer times app",
     description: 'Accurate daily salah times across Nigeria, calculated offline using the MADI Key Standard method.',
-    image: require('../../assets/Asset 7.png'),
+    image: require('../../assets/Asset7.png'),
   },
   {
     id: '2',
     title: 'Built-in accurate Qibla',
     description: 'Find the Qibla direction instantly with an in-app compass, designed to be quick and reliable.',
-    image: require('../../assets/Asset 8.png'),
+    image: require('../../assets/Asset8.png'),
   },
   {
     id: '3',
     title: 'Export your prayer timetable',
     description: 'Generate a full monthly prayer timetable as a PDF, then save it or share it with family and friends.',
-    image: require('../../assets/Asset 9.png'),
+    image: require('../../assets/Asset9.png'),
   },
   {
     id: '4',

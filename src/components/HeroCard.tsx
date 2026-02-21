@@ -340,6 +340,11 @@ const styles = StyleSheet.create({
   mosqueImage: {
     width: 400,
     height: 280,
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0,
+      },
+    }),
   },
   completedContainer: {
     paddingVertical: 64,
@@ -387,6 +392,11 @@ const styles = StyleSheet.create({
     width: 340,
     height: 280,
     zIndex: 10,
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0,
+      },
+    }),
   },
   gradientTransition: {
     position: 'absolute',

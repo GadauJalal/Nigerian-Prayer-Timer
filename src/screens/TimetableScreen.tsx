@@ -1,38 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, Settings, Share2 } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { calculatePrayerTimes, PrayerTimeResult } from '../utils/prayerTimes';
-import { formatDate, formatTime, getHijriMonth } from '../utils/date';
-import { startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isSameDay } from 'date-fns';
+import { formatDate, formatTime } from '../utils/date';
+import { isSameDay, addDays } from 'date-fns';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
+import { getHijriParts } from '../utils/date';
+import { getGregorianDaysForHijriMonth, HIJRI_MONTHS_NAMES } from '../utils/islamicDate';
+import { HijriCalibration } from '../components/HijriCalibration';
 
 const TimetableScreen = ({ navigation }: any) => {
-    const { location, adjustments } = useApp();
+    const { location, adjustments, hijriAdjustment } = useApp();
     const { isDarkMode } = useThemeContext();
-    const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [timetable, setTimetable] = useState<{ date: Date; prayers: PrayerTimeResult }[]>([]);
     const [showExportMenu, setShowExportMenu] = useState(false);
+
+    // Initialize with the current Hijri month/year
+    const currentHijri = useMemo(() => getHijriParts(new Date(), hijriAdjustment), [hijriAdjustment]);
+    const [hijriYear, setHijriYear] = useState(currentHijri.year);
+    const [hijriMonth, setHijriMonth] = useState(currentHijri.month);
+
+    const [timetable, setTimetable] = useState<{ date: Date; prayers: PrayerTimeResult }[]>([]);
 
     useEffect(() => {
         if (location) {
             generateTimetable();
         }
-    }, [location, currentMonth, adjustments]);
+    }, [location, hijriYear, hijriMonth, adjustments, hijriAdjustment]);
 
     const generateTimetable = () => {
         if (!location) return;
 
-        const start = startOfMonth(currentMonth);
-        const end = endOfMonth(currentMonth);
-        const days = eachDayOfInterval({ start, end });
+        const { days } = getGregorianDaysForHijriMonth(hijriYear, hijriMonth);
 
-        const newTimetable = days.map(day => ({
+        // Apply hijri adjustment: shift the Gregorian days
+        const adjustedDays = hijriAdjustment
+            ? days.map(d => addDays(d, -hijriAdjustment))
+            : days;
+
+        const newTimetable = adjustedDays.map(day => ({
             date: day,
             prayers: calculatePrayerTimes(location.lat, location.lng, day, adjustments),
         }));
@@ -40,8 +51,40 @@ const TimetableScreen = ({ navigation }: any) => {
         setTimetable(newTimetable);
     };
 
-    const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
-    const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+    const handlePrevMonth = () => {
+        if (hijriMonth === 1) {
+            setHijriMonth(12);
+            setHijriYear(hijriYear - 1);
+        } else {
+            setHijriMonth(hijriMonth - 1);
+        }
+    };
+
+    const handleNextMonth = () => {
+        if (hijriMonth === 12) {
+            setHijriMonth(1);
+            setHijriYear(hijriYear + 1);
+        } else {
+            setHijriMonth(hijriMonth + 1);
+        }
+    };
+
+    // Hijri display values
+    const hijriMonthName = HIJRI_MONTHS_NAMES[hijriMonth - 1];
+    const hijriDisplay = `${hijriMonthName} ${hijriYear}`;
+
+    // Compute Gregorian range for sub-heading
+    const gregorianSubHeading = useMemo(() => {
+        if (!timetable.length) return '';
+        const firstDate = timetable[0].date;
+        const lastDate = timetable[timetable.length - 1].date;
+        const firstMonth = firstDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const lastMonth = lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        if (firstMonth === lastMonth) return firstMonth;
+        const firstShort = firstDate.toLocaleDateString('en-US', { month: 'long' });
+        const lastFull = lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        return `${firstShort} - ${lastFull}`;
+    }, [timetable]);
 
     const handleSettings = () => {
         navigation.getParent()?.navigate('Settings');
@@ -51,8 +94,8 @@ const TimetableScreen = ({ navigation }: any) => {
         if (!timetable.length || !location) return;
         setShowExportMenu(false);
 
-        const monthName = currentMonth.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
-        const hijriMonth = getHijriMonth(currentMonth);
+        const pdfHijriTitle = `${hijriMonthName} ${hijriYear} AH`;
+        const totalDays = timetable.length;
 
         // Convert logo to base64 for embedding in PDF
         let logoBase64 = '';
@@ -76,9 +119,94 @@ const TimetableScreen = ({ navigation }: any) => {
             console.error('Failed to load store badges:', error);
         }
 
-        // Split timetable: first 13 days on page 1, rest on page 2
-        const firstHalf = timetable.slice(0, 13);
-        const secondHalf = timetable.slice(13);
+        // Find the state name for the location
+        const NIGERIA_LOCATIONS = require('../data/nigeria_locations').NIGERIA_LOCATIONS;
+        let stateName = '';
+        for (const state of NIGERIA_LOCATIONS) {
+            const cityExists = state.cities.find((city: any) =>
+                city.name === location.name &&
+                city.lat === location.lat &&
+                city.lng === location.lng
+            );
+            if (cityExists) {
+                stateName = state.name;
+                break;
+            }
+        }
+        const locationDisplay = stateName ? `${location.name}, ${stateName}` : location.name;
+
+        // Dynamic sizing — compact enough so 30 days + dividers always fit one page
+        const getDynamicSizes = (days: number) => {
+            const estimatedRows = days + 3; // header + up to 2 month dividers
+            if (estimatedRows <= 30) {
+                return {
+                    rowPadding: '4px 3px',
+                    fontSize: '7px',
+                    headerFontSize: '6.5px',
+                    headerPadding: '5px 3px',
+                    monthHeaderPadding: '4px 3px',
+                };
+            } else if (estimatedRows <= 32) {
+                return {
+                    rowPadding: '3.5px 2.5px',
+                    fontSize: '6.5px',
+                    headerFontSize: '6px',
+                    headerPadding: '4.5px 2.5px',
+                    monthHeaderPadding: '3.5px 2.5px',
+                };
+            } else {
+                return {
+                    rowPadding: '3px 2px',
+                    fontSize: '6px',
+                    headerFontSize: '5.5px',
+                    headerPadding: '4px 2px',
+                    monthHeaderPadding: '3px 2px',
+                };
+            }
+        };
+
+        const sizes = getDynamicSizes(totalDays);
+
+        // Build table rows — detect Gregorian month changes for sub-heading dividers
+        let tableRows = '';
+        let previousGregorianMonth = -1;
+        // Get the initial Gregorian month name for the first column header
+        const firstGregorianMonth = timetable[0].date.toLocaleDateString('en-US', { month: 'long' });
+
+        timetable.forEach((item, index) => {
+            const hijriDay = index + 1; // Days of the Hijri month: 1, 2, 3...
+            const gregorianMonthNum = item.date.getMonth();
+            const gregorianMonthName = item.date.toLocaleDateString('en-US', { month: 'long' });
+            const dayName = item.date.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayNumber = item.date.getDate();
+            const isFriday = item.date.getDay() === 5;
+
+            // Add a Gregorian month divider when the Gregorian month changes
+            if (previousGregorianMonth !== -1 && gregorianMonthNum !== previousGregorianMonth) {
+                tableRows += `
+            <tr class="month-separator">
+              <td colspan="9" class="month-header-cell">
+                ${gregorianMonthName} ${item.date.getFullYear()}
+              </td>
+            </tr>`;
+            }
+
+            // Add data row — Hijri day first, then Gregorian date
+            tableRows += `
+            <tr${isFriday ? ' class="friday-row"' : ''}>
+              <td class="islamic-col">${hijriDay}</td>
+              <td class="date-col">${dayNumber.toString().padStart(2, '0')}</td>
+              <td class="day-col">${dayName}</td>
+              <td>${formatTime(item.prayers.fajr)}</td>
+              <td>${formatTime(item.prayers.sunrise)}</td>
+              <td>${formatTime(item.prayers.zuhr)}</td>
+              <td>${formatTime(item.prayers.asr)}</td>
+              <td>${formatTime(item.prayers.maghrib)}</td>
+              <td>${formatTime(item.prayers.isha)}</td>
+            </tr>`;
+
+            previousGregorianMonth = gregorianMonthNum;
+        });
 
         const htmlContent = `
 <!DOCTYPE html>
@@ -86,288 +214,236 @@ const TimetableScreen = ({ navigation }: any) => {
 <head>
   <meta charset="UTF-8">
   <style>
-    @page { 
-      margin: 0; 
-      size: A4 portrait;
+    @page {
+      margin: 0;
+      size: A4 landscape;
     }
-    
+
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-    
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
-      margin: 0; 
-      padding: 0; 
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
       background: #f9fafb;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    
+
     .page {
       background: #f9fafb;
-      width: 210mm;
-      height: 297mm;
-      padding: 40px 35px;
+      width: 297mm;
+      height: 210mm;
+      padding: 8px 18px;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
       position: relative;
     }
-    
-    .page-break {
-      page-break-after: always;
-      break-after: page;
-    }
-    
+
     .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 24px;
-      gap: 24px;
+      margin-bottom: 4px;
+      gap: 12px;
       flex-shrink: 0;
     }
-    
+
     .header-left {
       flex: 1;
       text-align: left;
     }
-    
+
     .header-right {
       flex: 0 0 auto;
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 2px;
     }
-    
+
     .logo-container {
-      margin-bottom: 8px;
+      margin-bottom: 1px;
     }
-    
+
     .logo {
-      width: 80px;
+      width: 32px;
       height: auto;
       display: inline-block;
     }
-    
-    .app-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: #1F2937;
-      margin: 6px 0 18px 0;
-    }
-    
+
     .generated-by {
-      font-size: 10px;
+      font-size: 6px;
       color: #374151;
       font-weight: 600;
-      margin: 0 0 6px 0;
+      margin: 0 0 1px 0;
       white-space: nowrap;
-      line-height: 1.3;
+      line-height: 1.1;
     }
-    
+
     .app-stores {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 2px;
       align-items: center;
     }
-    
+
     .store-badge {
-      height: 32px;
+      height: 15px;
       width: auto;
     }
-    
-    h1 { 
-      color: #1F2937; 
-      margin: 0 0 6px 0; 
-      font-size: 26px;
+
+    h1 {
+      color: #1F2937;
+      margin: 0 0 1px 0;
+      font-size: 12px;
       font-weight: 700;
-      letter-spacing: -0.5px;
-      line-height: 1.2;
+      letter-spacing: -0.3px;
+      line-height: 1.1;
     }
-    
-    h2 { 
-      color: #1F2937; 
-      font-size: 22px; 
-      font-weight: 600; 
-      margin: 0 0 8px 0;
-      line-height: 1.2;
+
+    .hijri-date {
+      color: #10B981;
+      font-size: 9px;
+      margin: 0 0 1px 0;
+      font-weight: 600;
+      line-height: 1.1;
     }
-    
-    .hijri-date { 
-      color: #10B981; 
-      font-size: 14px; 
-      margin: 0 0 3px 0;
-      font-weight: 500;
-      line-height: 1.3;
-    }
-    
-    .location { 
-      color: #6B7280; 
-      font-size: 13px; 
+
+    .location {
+      color: #6B7280;
+      font-size: 7.5px;
       margin: 0;
-      line-height: 1.3;
+      line-height: 1.1;
     }
-    
+
     .table-container {
       flex: 1;
       overflow: hidden;
       display: flex;
       flex-direction: column;
     }
-    
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      background: white; 
-      border-radius: 10px; 
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 5px;
       overflow: hidden;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     }
-    
-    th, td { 
-      padding: 10px 6px; 
+
+    th, td {
+      padding: ${sizes.rowPadding};
       text-align: center;
-      font-size: 12px;
-    }
-    
-    th { 
-      background-color: #10B981; 
-      color: white; 
-      font-weight: 600; 
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-size: ${sizes.fontSize};
       line-height: 1.2;
     }
-    
-    td { 
-      border-bottom: 1px solid #E5E7EB; 
+
+    th {
+      background-color: #10B981;
+      color: white;
+      font-weight: 600;
+      font-size: ${sizes.headerFontSize};
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+      padding: ${sizes.headerPadding};
+    }
+
+    td {
+      border-bottom: 1px solid #E5E7EB;
       color: #374151;
       font-weight: 500;
-      line-height: 1.2;
     }
-    
-    tr:last-child td { 
-      border-bottom: none; 
+
+    tr:last-child td {
+      border-bottom: none;
     }
-    
-    tr:nth-child(even) {
+
+    tr:nth-child(even):not(.month-separator):not(.friday-row) {
       background-color: #F9FAFB;
     }
-    
-    .day-cell {
+
+    .date-col {
       font-weight: 600;
       color: #1F2937;
-      font-size: 13px;
     }
-    
-    .day-name {
-      font-size: 9px;
-      color: #9CA3AF;
-      display: block;
-      margin-top: 2px;
-      font-weight: 400;
-      line-height: 1;
+
+    .islamic-col {
+      font-weight: 600;
+      color: #1F2937;
     }
-    
+
+    .day-col {
+      font-weight: 500;
+      color: #374151;
+    }
+
     .friday-row {
       background-color: #ECFDF5 !important;
     }
-    
-    .friday-row .day-cell {
-      color: #10B981;
-      font-weight: 700;
+
+    .friday-row td {
+      color: #047857;
+      font-weight: 600;
     }
-    
+
+    .month-separator {
+      background-color: #374151 !important;
+    }
+
+    .month-header-cell {
+      background-color: #374151;
+      color: white;
+      font-weight: 600;
+      text-align: left;
+      padding: ${sizes.monthHeaderPadding} !important;
+      font-size: ${sizes.fontSize};
+      text-transform: capitalize;
+      border-bottom: 1px solid #4B5563 !important;
+    }
+
     /* Print-specific optimizations */
     @media print {
-      body {
+      html, body {
         margin: 0;
         padding: 0;
+        width: 100%;
+        height: 100%;
       }
-      
+
       .page {
         margin: 0;
-        padding: 40px 35px;
+        page-break-inside: avoid;
+        page-break-after: avoid;
       }
-      
-      .page-break {
-        page-break-after: always;
-        break-after: page;
+
+      .table-container {
+        page-break-inside: avoid;
       }
     }
   </style>
 </head>
 <body>
-  <!-- PAGE 1: Days 1-13 -->
-  <div class="page page-break">
+  <!-- Single Page: All days -->
+  <div class="page">
     <div class="header">
       <div class="header-left">
         ${logoBase64 ? `<div class="logo-container">
           <img src="${logoBase64}" alt="Prayer Times Nigeria Logo" class="logo">
         </div>` : ''}
-        
-        <h1>Prayer Timetable</h1>
-        <h2>${monthName}</h2>
-        <p class="hijri-date">${hijriMonth}</p>
-        <p class="location">${location.name}, Nigeria</p>
-      </div>
-      
-      <div class="header-right">
-        <p class="generated-by">Generated by<br>Prayer Times Nigeria</p>
-        ${storeBadgesBase64 ? `<div class="app-stores">
-          <img src="${storeBadgesBase64}" alt="Download on App Store and Google Play" class="store-badge">
-        </div>` : ''}
-      </div>
-    </div>
-    
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>DAY</th>
-            <th>FAJR</th>
-            <th>SUNRISE</th>
-            <th>DHUHR</th>
-            <th>ASR</th>
-            <th>MAGHRIB</th>
-            <th>ISHA</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${firstHalf.map(item => {
-            const dayName = item.date.toLocaleDateString('en-US', { weekday: 'short' });
-            const dayNumber = item.date.getDate();
-            const isFriday = item.date.getDay() === 5;
-            return `
-            <tr${isFriday ? ' class="friday-row"' : ''}>
-              <td class="day-cell">${dayNumber}<span class="day-name">${dayName}</span></td>
-              <td>${formatTime(item.prayers.fajr)}</td>
-              <td>${formatTime(item.prayers.sunrise)}</td>
-              <td>${formatTime(item.prayers.zuhr)}</td>
-              <td>${formatTime(item.prayers.asr)}</td>
-              <td>${formatTime(item.prayers.maghrib)}</td>
-              <td>${formatTime(item.prayers.isha)}</td>
-            </tr>
-              `;
-        }).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>
 
-  <!-- PAGE 2: Days 14-31 -->
-  <div class="page">
-    <div class="header">
-      <div class="header-left">
-        <h1>Prayer Timetable - ${monthName}</h1>
-        <p class="hijri-date">${location.name}, Nigeria (continued)</p>
+        <h1>Monthly Prayer Times in ${locationDisplay}</h1>
+        <p class="hijri-date">${pdfHijriTitle}</p>
+        <p class="location">${gregorianSubHeading}</p>
       </div>
-      
+
       <div class="header-right">
         <p class="generated-by">Generated by<br>Prayer Times Nigeria</p>
         ${storeBadgesBase64 ? `<div class="app-stores">
@@ -375,37 +451,24 @@ const TimetableScreen = ({ navigation }: any) => {
         </div>` : ''}
       </div>
     </div>
-    
+
     <div class="table-container">
       <table>
         <thead>
           <tr>
-            <th>DAY</th>
-            <th>FAJR</th>
-            <th>SUNRISE</th>
-            <th>DHUHR</th>
-            <th>ASR</th>
-            <th>MAGHRIB</th>
-            <th>ISHA</th>
+            <th>${hijriMonthName}</th>
+            <th>${firstGregorianMonth}</th>
+            <th>Day</th>
+            <th>Fajr</th>
+            <th>Sunrise</th>
+            <th>Dhuhr</th>
+            <th>Asr</th>
+            <th>Maghrib</th>
+            <th>Isha</th>
           </tr>
         </thead>
         <tbody>
-          ${secondHalf.map(item => {
-            const dayName = item.date.toLocaleDateString('en-US', { weekday: 'short' });
-            const dayNumber = item.date.getDate();
-            const isFriday = item.date.getDay() === 5;
-            return `
-            <tr${isFriday ? ' class="friday-row"' : ''}>
-              <td class="day-cell">${dayNumber}<span class="day-name">${dayName}</span></td>
-              <td>${formatTime(item.prayers.fajr)}</td>
-              <td>${formatTime(item.prayers.sunrise)}</td>
-              <td>${formatTime(item.prayers.zuhr)}</td>
-              <td>${formatTime(item.prayers.asr)}</td>
-              <td>${formatTime(item.prayers.maghrib)}</td>
-              <td>${formatTime(item.prayers.isha)}</td>
-            </tr>
-              `;
-        }).join('')}
+          ${tableRows}
         </tbody>
       </table>
     </div>
@@ -427,8 +490,7 @@ const TimetableScreen = ({ navigation }: any) => {
         setShowExportMenu(false);
         if (!timetable.length || !location) return;
 
-        const monthName = currentMonth.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
-        let message = `Prayer Timetable - ${monthName}\n${location.name}\n\n`;
+        let message = `Prayer Timetable - ${HIJRI_MONTHS_NAMES[hijriMonth - 1]} ${hijriYear}\n${location.name}\n\n`;
 
         timetable.forEach(item => {
             const date = formatDate(item.date, 'd MMM');
@@ -453,9 +515,6 @@ const TimetableScreen = ({ navigation }: any) => {
         }
     };
 
-    const monthName = currentMonth.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
-    const hijriMonth = getHijriMonth(currentMonth);
-
     if (!location) {
         return (
             <View style={[styles.container, isDarkMode && styles.containerDark]}>
@@ -470,9 +529,6 @@ const TimetableScreen = ({ navigation }: any) => {
 
     return (
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
-            {/* Ambient glow */}
-            <View style={[styles.ambientGlow, isDarkMode && styles.ambientGlowDark]} />
-
             <SafeAreaView style={styles.safeArea}>
                 {/* Header */}
                 <View style={styles.header}>
@@ -497,6 +553,9 @@ const TimetableScreen = ({ navigation }: any) => {
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
                 >
+                    {/* Hijri Calibration */}
+                    <HijriCalibration isDarkMode={isDarkMode} />
+
                     {/* Month Card */}
                     <View style={[styles.monthCard, isDarkMode ? styles.monthCardDark : styles.monthCardLight]}>
                         <View style={styles.monthCardContent}>
@@ -510,10 +569,10 @@ const TimetableScreen = ({ navigation }: any) => {
 
                             <View style={styles.monthInfo}>
                                 <Text style={[styles.monthTitle, isDarkMode && styles.monthTitleDark]}>
-                                    {monthName}
+                                    {hijriDisplay}
                                 </Text>
                                 <Text style={[styles.hijriMonth, isDarkMode && styles.hijriMonthDark]}>
-                                    {hijriMonth}
+                                    {gregorianSubHeading}
                                 </Text>
                             </View>
 
@@ -559,7 +618,7 @@ const TimetableScreen = ({ navigation }: any) => {
                                 const isToday = isSameDay(item.date, new Date());
                                 const isLastRow = index === timetable.length - 1;
                                 const dayName = item.date.toLocaleDateString('en-US', { weekday: 'short' });
-                                const dayNumber = item.date.getDate();
+                                const hijriDay = index + 1; // Hijri day of the month
 
                                 return (
                                     <View
@@ -572,7 +631,7 @@ const TimetableScreen = ({ navigation }: any) => {
                                     >
                                         <View style={[styles.dayCell, styles.cellContainer]}>
                                             <Text style={[styles.dayNumber, isToday && styles.todayText, isDarkMode && styles.cellDark]}>
-                                                {dayNumber}
+                                                {hijriDay}
                                             </Text>
                                             <Text style={[styles.dayName, isToday && styles.todayText, isDarkMode && styles.dayNameDark]}>
                                                 {dayName}
