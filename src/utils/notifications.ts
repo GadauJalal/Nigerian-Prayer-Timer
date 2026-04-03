@@ -11,6 +11,13 @@ export const updateForegroundTime = () => {
     lastForegroundTime = Date.now();
 };
 
+// Scheduling lock to prevent concurrent/duplicate scheduling
+let isScheduling = false;
+let pendingSchedule = false;
+
+// Guard to ensure notification listener is only registered once
+let listenerInitialized = false;
+
 // Configure notification behavior - CRITICAL for showing notifications
 // This handler controls how notifications are DISPLAYED when they fire
 Notifications.setNotificationHandler({
@@ -364,6 +371,17 @@ export const scheduleReengagementNotification = async () => {
  * This is the core function of the simplified notification system
  */
 export const scheduleNext2Prayers = async (): Promise<boolean> => {
+    // If already scheduling, mark as pending and skip
+    // This prevents concurrent calls from creating duplicate notifications
+    if (isScheduling) {
+        console.log('⏳ Scheduling already in progress, queuing...');
+        pendingSchedule = true;
+        return false;
+    }
+
+    isScheduling = true;
+    pendingSchedule = false;
+
     try {
         console.log('\n🔔 ===== SCHEDULING NEXT 2 PRAYERS =====');
         console.log(`🕐 Current time: ${new Date().toLocaleString()}`);
@@ -454,6 +472,15 @@ export const scheduleNext2Prayers = async (): Promise<boolean> => {
     } catch (error) {
         await logError('scheduleNext2Prayers', error);
         return false;
+    } finally {
+        isScheduling = false;
+
+        // If another call came in while we were scheduling, run once more
+        if (pendingSchedule) {
+            console.log('🔄 Running queued schedule request...');
+            pendingSchedule = false;
+            return scheduleNext2Prayers();
+        }
     }
 };
 
@@ -462,6 +489,13 @@ export const scheduleNext2Prayers = async (): Promise<boolean> => {
  * This creates a self-sustaining cycle where each notification triggers scheduling of the next 2
  */
 export const initializeNotificationListener = () => {
+    // Prevent registering multiple listeners (e.g. if called more than once)
+    if (listenerInitialized) {
+        console.log('👂 Notification listener already initialized, skipping');
+        return;
+    }
+    listenerInitialized = true;
+
     // Listen for when notifications are received (fires in both foreground and background)
     Notifications.addNotificationReceivedListener(async (notification) => {
         const notificationType = notification.request.content.data?.type;
@@ -471,10 +505,10 @@ export const initializeNotificationListener = () => {
             console.log(`\n🕌 Prayer notification received: ${prayerName}`);
             console.log('🔄 Auto-scheduling next 2 prayers...');
 
-            // Wait a moment to prevent any potential race conditions
+            // Wait a moment before rescheduling
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // Schedule the next 2 prayers
+            // Schedule the next 2 prayers (lock inside prevents duplicates)
             const success = await scheduleNext2Prayers();
 
             if (success) {

@@ -91,7 +91,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }, 2000);
             }
         }
-    }, [location, adjustments, hasCompletedOnboarding, selectedAdhan]); // Added hasCompletedOnboarding and selectedAdhan dependencies
+    }, [location, adjustments, hasCompletedOnboarding]); // Removed selectedAdhan - adhan changes are handled by updateNotificationChannelSound in SettingsScreen
 
     const loadSettings = async () => {
         try {

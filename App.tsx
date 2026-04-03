@@ -28,18 +28,20 @@ export default function App() {
         updateForegroundTime(); // Update foreground time for notification handler
 
         // Fallback check: Ensure we have 2 notifications scheduled
+        // Use longer delay to avoid racing with notification-received listener
         setTimeout(() => {
           ensureNotificationsScheduled();
-          scheduleReengagementNotification(); // Reset 2-week reminder
-        }, 1000); // Small delay to let app fully initialize
+          scheduleReengagementNotification();
+        }, 3000);
       }
       appState.current = nextAppState;
     });
 
-    // Initial check when app first loads
+    // Schedule re-engagement notification on first load
+    // NOTE: Initial prayer scheduling is handled by AppContext when location loads,
+    // so we do NOT call ensureNotificationsScheduled here to avoid racing with it.
     setTimeout(() => {
-      ensureNotificationsScheduled();
-      scheduleReengagementNotification(); // Reset 2-week reminder
+      scheduleReengagementNotification();
     }, 2000);
 
     // Cleanup listeners on unmount

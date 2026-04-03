@@ -46,6 +46,10 @@ export function HijriCalibration({ isDarkMode }: HijriCalibrationProps) {
         Linking.openURL('https://x.com/moonsightingng');
     };
 
+    const handleVisitWebsite = () => {
+        Linking.openURL('https://prayertimesnigeria.com/calendar');
+    };
+
     const hasUnsavedChanges = localAdjustment !== hijriAdjustment;
 
     return (
@@ -156,6 +160,17 @@ export function HijriCalibration({ isDarkMode }: HijriCalibrationProps) {
             >
                 <Text style={styles.verifyButtonText}>
                     Verify with National Moonsighting Committee
+                </Text>
+            </TouchableOpacity>
+
+            {/* Website Link */}
+            <TouchableOpacity
+                onPress={handleVisitWebsite}
+                style={websiteLinkStyles.websiteLink}
+                activeOpacity={0.7}
+            >
+                <Text style={[websiteLinkStyles.websiteLinkText, isDarkMode && websiteLinkStyles.websiteLinkTextDark]}>
+                    Verify on PrayerTimesNigeria.com
                 </Text>
             </TouchableOpacity>
         </View>
@@ -373,5 +388,21 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         textAlign: 'center',
+    },
+});
+
+const websiteLinkStyles = StyleSheet.create({
+    websiteLink: {
+        marginTop: 12,
+        alignItems: 'center' as const,
+    },
+    websiteLinkText: {
+        fontSize: 13,
+        color: '#059669',
+        textDecorationLine: 'underline' as const,
+        textAlign: 'center' as const,
+    },
+    websiteLinkTextDark: {
+        color: '#34D399',
     },
 });

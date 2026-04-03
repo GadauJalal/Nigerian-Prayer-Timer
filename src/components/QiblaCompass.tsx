@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Animated } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 interface QiblaCompassProps {
+  dialRotationAnimated: Animated.Value;
+  needleRotationAnimated: Animated.Value;
   heading: number;
   qiblaDirection: number;
   isDarkMode: boolean;
@@ -11,13 +13,12 @@ interface QiblaCompassProps {
 const COMPASS_SIZE = Math.min(Dimensions.get('window').width - 48, 320);
 
 export function QiblaCompass({
+  dialRotationAnimated,
+  needleRotationAnimated,
   heading,
   qiblaDirection,
   isDarkMode,
 }: QiblaCompassProps) {
-  // Calculate the needle rotation (relative to phone heading)
-  const needleRotation = qiblaDirection - heading;
-
   // Calculate alignment for UI feedback
   const diff = Math.abs(heading - qiblaDirection);
   const normalizedDiff = ((diff % 360) + 360) % 360;
@@ -82,10 +83,17 @@ export function QiblaCompass({
         </View>
 
         {/* ROTATING DIAL - Only markings rotate */}
-        <View
+        <Animated.View
           style={[
             styles.rotatingDial,
-            { transform: [{ rotate: `${-heading}deg` }] }
+            {
+              transform: [{
+                rotate: dialRotationAnimated.interpolate({
+                  inputRange: [-3600, 3600],
+                  outputRange: ['-3600deg', '3600deg'],
+                }),
+              }],
+            },
           ]}
         >
           {/* Compass Ring with Tick Marks */}
@@ -129,13 +137,20 @@ export function QiblaCompass({
           <Text style={[styles.cardinalS, isDarkMode && styles.cardinalSDark]}>S</Text>
           <Text style={[styles.cardinalE, isDarkMode && styles.cardinalEDark]}>E</Text>
           <Text style={[styles.cardinalW, isDarkMode && styles.cardinalWDark]}>W</Text>
-        </View>
+        </Animated.View>
 
         {/* QIBLA NEEDLE - Clean, no shadow artifacts */}
-        <View
+        <Animated.View
           style={[
             styles.needleContainer,
-            { transform: [{ rotate: `${needleRotation}deg` }] }
+            {
+              transform: [{
+                rotate: needleRotationAnimated.interpolate({
+                  inputRange: [-3600, 3600],
+                  outputRange: ['-3600deg', '3600deg'],
+                }),
+              }],
+            },
           ]}
         >
           <View style={styles.needleWrapper}>
@@ -178,7 +193,7 @@ export function QiblaCompass({
             </View>
 
           </View>
-        </View>
+        </Animated.View>
 
         {/* Center Cap - Detailed Machined Look */}
         <View style={styles.centerCapOuter}>

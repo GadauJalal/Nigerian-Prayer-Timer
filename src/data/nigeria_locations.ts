@@ -89,7 +89,8 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Ukanafun", "lat": 5.1286, "lng": 7.6985 },
             { name: "Uruan", "lat": 5.0844, "lng": 8.1805 },
             { name: "Urue-Offong/Oruko", "lat": 4.7589, "lng": 7.8291 },
-            { name: "Uyo", "lat": 5.0513, "lng": 7.9340 }
+            { name: "Uyo", "lat": 5.0513, "lng": 7.9340 },
+            { name: "Onna", "lat": 4.65, "lng": 7.86666667 }
         ],
     },
     {
@@ -179,7 +180,9 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Tarka", "lat": 7.1039, "lng": 8.5106 },
             { name: "Ukum", "lat": 7.3830, "lng": 8.5546 },
             { name: "Ushongo", "lat": 7.2168, "lng": 8.3189 },
-            { name: "Vandeikya", "lat": 7.3083, "lng": 8.4831 }
+            { name: "Vandeikya", "lat": 7.3083, "lng": 8.4831 },
+            { name: "Obi", "lat": 7, "lng": 8.25 },
+            { name: "Oju", "lat": 6.85, "lng": 8.41666667 }
         ],
     },
     {
@@ -210,7 +213,8 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Monguno", "lat": 13.1825, "lng": 13.5019 },
             { name: "Ngala", "lat": 12.4308, "lng": 14.4396 },
             { name: "Nganzai", "lat": 12.9714, "lng": 13.9915 },
-            { name: "Shani", "lat": 11.0833, "lng": 12.6322 }
+            { name: "Shani", "lat": 11.0833, "lng": 12.6322 },
+            { name: "Gubio", "lat": 12.4975, "lng": 12.78 }
         ]
     },
     {
@@ -362,7 +366,8 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Kaltungo", "lat": 9.7835, "lng": 11.4392 },
             { name: "Nafada", "lat": 10.3900, "lng": 11.1500 },
             { name: "Shongom", "lat": 9.7394, "lng": 11.5970 },
-            { name: "Yamaltu-Deba", "lat": 10.4649, "lng": 11.3003 }
+            { name: "Yamaltu-Deba", "lat": 10.4649, "lng": 11.3003 },
+            { name: "Kwami", "lat": 10.5, "lng": 11.25 }
         ]
     },
     {
@@ -502,7 +507,8 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Tudun-Wada", "lat": 11.9333, "lng": 8.4667 },
             { name: "Ungogo", "lat": 11.9896, "lng": 8.4372 },
             { name: "Warawa", "lat": 12.0622, "lng": 8.3823 },
-            { name: "Wudil", "lat": 12.0428, "lng": 8.4314 }
+            { name: "Wudil", "lat": 12.0428, "lng": 8.4314 },
+            { name: "Nasarawa", "lat": 8.53333333, "lng": 8.3 }
         ]
     },
     {
@@ -537,7 +543,12 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Mashi", "lat": 11.9417, "lng": 7.5053 },
             { name: "Matazu", "lat": 12.4178, "lng": 7.4900 },
             { name: "Rimi", "lat": 12.2500, "lng": 7.3833 },
-            { name: "Sabuwa", "lat": 13.1000, "lng": 7.5333 }
+            { name: "Sabuwa", "lat": 13.1000, "lng": 7.5333 },
+            { name: "Kusada", "lat": 12.46666667, "lng": 7.98333333 },
+            { name: "Musawa", "lat": 12.1294, "lng": 7.66889 },
+            { name: "Safana", "lat": 12.5, "lng": 7.23333 },
+            { name: "Sandamu", "lat": 12.93333, "lng": 8.36667 },
+            { name: "Zango", "lat": 12.93333, "lng": 8.5333 }
         ]
     },
     {
@@ -767,7 +778,10 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Orolu", "lat": 7.6833, "lng": 4.6167 },
             { name: "Osogbo", "lat": 7.7669, "lng": 4.5600 },
             { name: "Oyun", "lat": 7.6500, "lng": 4.5500 },
-            { name: "Obokun-Ifelodun", "lat": 7.7700, "lng": 4.5800 }
+            { name: "Obokun-Ifelodun", "lat": 7.7700, "lng": 4.5800 },
+            { name: "Ayedaade", "lat": 7.31666667, "lng": 4.35 },
+            { name: "Aiyedire", "lat": 7.56666667, "lng": 4.23333333 },
+            { name: "Ila", "lat": 8.01666667, "lng": 4.9 }
         ]
     },
     {
@@ -804,7 +818,11 @@ export const NIGERIA_LOCATIONS: State[] = [
             { name: "Surulere", "lat": 7.8333, "lng": 4.0000 },
             { name: "Oluyole-Ibadan", "lat": 7.4000, "lng": 3.7000 },
             { name: "Ogbomoso-Oyo", "lat": 8.2500, "lng": 4.3000 },
-            { name: "Ibadan South-East", "lat": 7.4500, "lng": 3.9500 }
+            { name: "Ibadan South-East", "lat": 7.4500, "lng": 3.9500 },
+            { name: "Ibarapa Central", "lat": 7.435346, "lng": 3.288581 },
+            { name: "Ibarapa East", "lat": 7.549722, "lng": 3.45 },
+            { name: "Ibarapa North", "lat": 7.564226, "lng": 3.229916 },
+            { name: "Ido", "lat": 7.507354, "lng": 3.719376 }
         ]
     },
     {

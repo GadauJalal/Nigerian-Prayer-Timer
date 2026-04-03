@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useThemeContext } from '../context/ThemeContext';
-import { getNextPrayer } from '../utils/prayerTimes';
+import { getNextPrayer, calculatePrayerTimes } from '../utils/prayerTimes';
 import { SPACING } from '../constants/theme';
 import { HeroCard, Prayer } from '../components/HeroCard';
 import { DateDisplay } from '../components/DateDisplay';
@@ -11,7 +11,7 @@ import { PrayerTimesGrid } from '../components/PrayerTimesGrid';
 import { HomeHeader } from '../components/HomeHeader';
 
 const HomeScreen = ({ navigation }: any) => {
-  const { location, prayerTimes } = useApp();
+  const { location, prayerTimes, adjustments } = useApp();
   const { isDarkMode, toggleDarkMode } = useThemeContext();
   const [nextPrayer, setNextPrayer] = useState<Prayer | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -36,24 +36,31 @@ const HomeScreen = ({ navigation }: any) => {
 
     const updateNextPrayer = () => {
       const next = getNextPrayer(prayerTimes);
-      if (next && next.remaining < 0) {
-        setNextPrayer(prev => (prev === null ? prev : null));
-      } else if (next) {
+      if (next && next.remaining < 0 && location) {
+        // All prayers done for today — show tomorrow's Fajr
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowTimes = calculatePrayerTimes(location.lat, location.lng, tomorrow, adjustments);
+        setNextPrayer(prev => {
+          if (prev && prev.name === 'Fajr' && prev.time.getTime() === tomorrowTimes.fajr.getTime()) {
+            return prev;
+          }
+          return { name: 'Fajr', time: tomorrowTimes.fajr };
+        });
+      } else if (next && next.remaining >= 0) {
         setNextPrayer(prev => {
           if (prev && prev.name === next.name && prev.time.getTime() === next.time.getTime()) {
             return prev;
           }
           return { name: next.name, time: next.time };
         });
-      } else {
-        setNextPrayer(prev => (prev === null ? prev : null));
       }
     };
 
     updateNextPrayer();
     const timer = setInterval(updateNextPrayer, 30000);
     return () => clearInterval(timer);
-  }, [prayerTimes]);
+  }, [prayerTimes, location, adjustments]);
 
   if (!location || !prayerTimes) {
     return (
@@ -73,7 +80,7 @@ const HomeScreen = ({ navigation }: any) => {
   const prayers: Prayer[] = [
     { name: 'Fajr', time: prayerTimes.fajr },
     { name: 'Sunrise', time: prayerTimes.sunrise },
-    { name: 'Zuhr', time: prayerTimes.zuhr },
+    { name: 'Dhuhr', time: prayerTimes.zuhr },
     { name: 'Asr', time: prayerTimes.asr },
     { name: 'Maghrib', time: prayerTimes.maghrib },
     { name: 'Isha', time: prayerTimes.isha },

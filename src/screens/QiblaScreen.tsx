@@ -1,118 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Magnetometer, DeviceMotion } from 'expo-sensors';
+import { useIsFocused } from '@react-navigation/native';
 import { useThemeContext } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { QiblaCompass } from '../components/QiblaCompass';
-import { Smartphone } from 'lucide-react-native';
-
-// Helper function to calculate Qibla direction from user's location
-// Helper function to calculate Qibla direction from user's location
-function calculateQiblaDirection(userLat: number, userLng: number): number {
-  // Kaaba coordinates (Precise)
-  const kaabaLat = 21.422487;
-  const kaabaLng = 39.826206;
-
-  // Convert to radians
-  const phi1 = (userLat * Math.PI) / 180;
-  const lamb1 = (userLng * Math.PI) / 180;
-  const phi2 = (kaabaLat * Math.PI) / 180;
-  const lamb2 = (kaabaLng * Math.PI) / 180;
-
-  const deltaLambda = lamb2 - lamb1;
-
-  // Formula: θ = atan2(sin(Δλ), cos(φ₁)*tan(φ₂) - sin(φ₁)*cos(Δλ))
-  const y = Math.sin(deltaLambda);
-  const x = Math.cos(phi1) * Math.tan(phi2) - Math.sin(phi1) * Math.cos(deltaLambda);
-
-  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
-
-  // Normalize to 0-360
-  return (bearing + 360) % 360;
-}
+import { Smartphone, AlertTriangle } from 'lucide-react-native';
+import { useQiblaCompass } from '../hooks/useQiblaCompass';
 
 export default function QiblaScreen() {
   const { isDarkMode } = useThemeContext();
   const { location } = useApp();
-  const [heading, setHeading] = useState(0);
-  const [isPhoneFlat, setIsPhoneFlat] = useState(true);
-  const [isSensorAvailable, setIsSensorAvailable] = useState<boolean | null>(null);
+  const isFocused = useIsFocused();
 
-  // Calculate Qibla direction based on user's location
-  // Initialize with calculated value if location is available, otherwise use 0
-  const qiblaDirection = location
-    ? Math.round(calculateQiblaDirection(location.lat, location.lng))
-    : 0;
+  const fallbackLocation = location
+    ? { lat: location.lat, lng: location.lng, name: location.name }
+    : null;
 
-  // Subscribe to magnetometer for compass heading
-  useEffect(() => {
-    let subscription: any = null;
-
-    const setupMagnetometer = async () => {
-      try {
-        // Check if magnetometer is available
-        const available = await Magnetometer.isAvailableAsync();
-        setIsSensorAvailable(available);
-
-        if (!available) {
-          return;
-        }
-
-        // Set update interval
-        Magnetometer.setUpdateInterval(100);
-
-        subscription = Magnetometer.addListener((data) => {
-          // Calculate heading from magnetometer data
-          let angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
-
-          // Normalize to 0-360
-          angle = (angle + 360) % 360;
-
-          // Platform-specific adjustments
-          if (Platform.OS === 'android') {
-            // Android typically needs a 90-degree offset
-            angle = (angle + 90) % 360;
-          }
-
-          setHeading(Math.round(angle));
-        });
-      } catch (error) {
-        console.error('Error setting up magnetometer:', error);
-        setIsSensorAvailable(false);
-      }
-    };
-
-    setupMagnetometer();
-
-    return () => {
-      if (subscription) {
-        subscription.remove();
-      }
-    };
-  }, []);
-
-  // Subscribe to device motion to detect if phone is flat
-  useEffect(() => {
-    DeviceMotion.setUpdateInterval(200);
-
-    const subscription = DeviceMotion.addListener((data) => {
-      if (data.rotation) {
-        // Check pitch (beta) - should be close to 0 when flat
-        // Check roll (gamma) - should be close to 0 when flat
-        const beta = data.rotation.beta * (180 / Math.PI); // pitch
-        const gamma = data.rotation.gamma * (180 / Math.PI); // roll
-
-        // Phone is considered flat if pitch and roll are both within ±30 degrees of horizontal
-        const isFlat = Math.abs(beta) < 30 && Math.abs(gamma) < 30;
-        setIsPhoneFlat(isFlat);
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
+  const {
+    headingDegrees,
+    qiblaBearing,
+    dialRotationAnimated,
+    needleRotationAnimated,
+    isPhoneFlat,
+    isSensorAvailable,
+    isCalibrationPoor,
+    isUsingGPS,
+    locationName,
+  } = useQiblaCompass(fallbackLocation, isFocused);
 
   return (
     <View
@@ -167,7 +82,7 @@ export default function QiblaScreen() {
                     : styles.directionDegreeLight,
                 ]}
               >
-                {qiblaDirection}°
+                {qiblaBearing}°
               </Text>
               <Text
                 style={[
@@ -209,7 +124,30 @@ export default function QiblaScreen() {
                   isDarkMode ? styles.sensorErrorMessageDark : styles.sensorErrorMessageLight,
                 ]}
               >
-                Your device does not have a gyroscope or magnetometer sensor, which is required for compass functionality. Please use a different device to access the Qibla compass feature.
+                Your device does not have a compass sensor, or location permission was denied. Please enable location access in Settings.
+              </Text>
+            </View>
+          )}
+
+          {/* Calibration warning */}
+          {isSensorAvailable && isCalibrationPoor && (
+            <View
+              style={[
+                styles.warningBanner,
+                isDarkMode ? styles.warningBannerDark : styles.warningBannerLight,
+              ]}
+            >
+              <AlertTriangle
+                size={18}
+                color={isDarkMode ? '#FBBF24' : '#D97706'}
+              />
+              <Text
+                style={[
+                  styles.warningText,
+                  isDarkMode ? styles.warningTextDark : styles.warningTextLight,
+                ]}
+              >
+                Compass accuracy is low. Move your phone in a figure-8 pattern to calibrate.
               </Text>
             </View>
           )}
@@ -242,8 +180,10 @@ export default function QiblaScreen() {
             <>
               <View style={styles.compassWrapper}>
                 <QiblaCompass
-                  heading={heading}
-                  qiblaDirection={qiblaDirection}
+                  dialRotationAnimated={dialRotationAnimated}
+                  needleRotationAnimated={needleRotationAnimated}
+                  heading={headingDegrees}
+                  qiblaDirection={qiblaBearing}
                   isDarkMode={isDarkMode}
                 />
               </View>
@@ -258,7 +198,12 @@ export default function QiblaScreen() {
                       : styles.locationPillLight,
                   ]}
                 >
-                  <View style={styles.locationDot} />
+                  <View
+                    style={[
+                      styles.locationDot,
+                      { backgroundColor: isUsingGPS ? '#059669' : '#F59E0B' },
+                    ]}
+                  />
                   <Text
                     style={[
                       styles.locationText,
@@ -267,7 +212,7 @@ export default function QiblaScreen() {
                         : styles.locationTextLight,
                     ]}
                   >
-                    {location?.name || 'Abuja, Nigeria'}
+                    {locationName}
                   </Text>
                 </View>
               </View>
