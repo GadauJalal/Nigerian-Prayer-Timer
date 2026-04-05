@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useThemeContext } from '../context/ThemeContext';
@@ -11,7 +11,7 @@ import { PrayerTimesGrid } from '../components/PrayerTimesGrid';
 import { HomeHeader } from '../components/HomeHeader';
 
 const HomeScreen = ({ navigation }: any) => {
-  const { location, prayerTimes, adjustments } = useApp();
+  const { location, prayerTimes, adjustments, refreshPrayerTimes } = useApp();
   const { isDarkMode, toggleDarkMode } = useThemeContext();
   const [nextPrayer, setNextPrayer] = useState<Prayer | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -24,6 +24,16 @@ const HomeScreen = ({ navigation }: any) => {
     navigation.getParent()?.navigate('Settings');
   };
 
+  // Refresh prayer times when app comes back to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        refreshPrayerTimes();
+      }
+    });
+    return () => subscription.remove();
+  }, [refreshPrayerTimes]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -35,6 +45,19 @@ const HomeScreen = ({ navigation }: any) => {
     if (!prayerTimes) return;
 
     const updateNextPrayer = () => {
+      // Check if prayer times are stale (from a different day)
+      const today = new Date();
+      const prayerDate = prayerTimes.fajr;
+      if (
+        prayerDate.getDate() !== today.getDate() ||
+        prayerDate.getMonth() !== today.getMonth() ||
+        prayerDate.getFullYear() !== today.getFullYear()
+      ) {
+        // Prayer times are from a different day, refresh them
+        refreshPrayerTimes();
+        return;
+      }
+
       const next = getNextPrayer(prayerTimes);
       if (next && next.remaining < 0 && location) {
         // All prayers done for today — show tomorrow's Fajr
@@ -60,7 +83,7 @@ const HomeScreen = ({ navigation }: any) => {
     updateNextPrayer();
     const timer = setInterval(updateNextPrayer, 30000);
     return () => clearInterval(timer);
-  }, [prayerTimes, location, adjustments]);
+  }, [prayerTimes, location, adjustments, refreshPrayerTimes]);
 
   if (!location || !prayerTimes) {
     return (

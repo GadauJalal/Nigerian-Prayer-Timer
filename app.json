@@ -2,7 +2,7 @@
   "expo": {
     "name": "Prayer Times Nigeria",
     "slug": "app",
-    "version": "2.0",
+    "version": "3.0",
     "orientation": "portrait",
     "icon": "./assets/prayertimeslogo.jpeg",
     "userInterfaceStyle": "light",
@@ -22,7 +22,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/prayertimeslogo.jpeg",
         "backgroundColor": "#ffffff"
